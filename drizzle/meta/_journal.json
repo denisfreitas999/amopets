@@ -1,0 +1,62 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1790376058346,
+      "tag": "0000_mature_gwen_stacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1790376322137,
+      "tag": "0001_previous_salo",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1790378527226,
+      "tag": "0002_bored_stryfe",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1790686388091,
+      "tag": "0003_messy_synch",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1790687983598,
+      "tag": "0004_silly_santa_claus",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "5",
+      "when": 1790693867764,
+      "tag": "0005_nervous_nekra",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "5",
+      "when": 1790697620492,
+      "tag": "0006_spotty_doctor_faustus",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1790703586587,
+      "tag": "0007_last_virginia_dare",
+      "breakpoints": true
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `orders` MODIFY COLUMN `status` enum('received','preparing','out_for_delivery','delivered','cancelled') NOT NULL DEFAULT 'received';

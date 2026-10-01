@@ -55,9 +55,9 @@ const STORAGE = {
 };
 
 const IMAGES = {
-  hero: "/manus-storage/pets-hero_028be7ce.jpeg",
-  grooming: "/manus-storage/grooming_4f2a695a.jpg",
-  products: "/manus-storage/products_c366d590.jpg",
+  hero: "/uploads/pets-hero.webp",
+  grooming: "/uploads/catalog-grooming.webp",
+  products: "/uploads/catalog-pets.webp",
 };
 
 type Category = "Cachorros" | "Gatos" | "Farmácia" | "Aves" | "Casa & Jardim" | "Diversos" | "Higiene" | "Roedores";

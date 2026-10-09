@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, adminUsers, availableSlots, bookings, coupons, groomingServices, orderItems, orderNumberSequence, orders, productImages, productSpecs, productVariants, products, shippingRules, users } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { normalizeWhatsapp } from "../shared/phone";
+import { findShippingRule, ShippingMode, shippingRuleLabels } from "../shared/shipping";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -124,10 +125,10 @@ export async function createOrder(input: {
     return { productId: product.id, productName: product.name, variantLabel: variant.label, quantity: item.quantity, unitPrice: unitPrice.toFixed(2) };
   });
   const rules = await db.select().from(shippingRules).where(eq(shippingRules.active, true));
-  const neighborhood = input.neighborhood.trim().toLocaleLowerCase("pt-BR");
-  const matchedRule = rules.find((rule) => rule.neighborhoods.split(",").some((item) => neighborhood.includes(item.trim().toLocaleLowerCase("pt-BR"))));
-  const fallbackRule = rules.find((rule) => rule.label.toLocaleLowerCase("pt-BR").includes("demais"));
-  const shippingFee = Number((matchedRule?.fee ?? fallbackRule?.fee ?? 0));
+  const matchedRule = findShippingRule(rules, { neighborhood: input.neighborhood, city: input.city });
+  const shippingMode: ShippingMode = matchedRule?.mode || "quote";
+  if (shippingMode === "unavailable") throw new Error("No momento, não entregamos neste endereço. Fale conosco pelo WhatsApp para verificar outras opções.");
+  const shippingFee = shippingMode === "fixed" ? Number(matchedRule?.fee || 0) : 0;
   const coupon = await calculateCoupon(input.couponCode, subtotal);
   const total = subtotal - coupon.discount + shippingFee;
   const createdOrder = await db.transaction(async (tx) => {
@@ -135,7 +136,7 @@ export async function createOrder(input: {
     const sequenceRow = (await tx.select({ nextNumber: orderNumberSequence.nextNumber }).from(orderNumberSequence).where(eq(orderNumberSequence.id, 1)).limit(1))[0];
     if (!sequenceRow) throw new Error("Sequência de pedidos indisponível");
     const orderNumber = Number(sequenceRow.nextNumber) - 1;
-    const inserted = await tx.insert(orders).values({ orderNumber, customerName: input.customerName, whatsapp: normalizeWhatsapp(input.whatsapp), cep: input.cep || null, street: input.street, number: input.number, neighborhood: input.neighborhood, city: input.city, state: input.state, complement: input.complement || null, paymentMethod: input.paymentMethod, couponCode: coupon.code || null, subtotal: subtotal.toFixed(2), shippingFee: shippingFee.toFixed(2), discount: coupon.discount.toFixed(2), total: total.toFixed(2) });
+    const inserted = await tx.insert(orders).values({ orderNumber, customerName: input.customerName, whatsapp: normalizeWhatsapp(input.whatsapp), cep: input.cep || null, street: input.street, number: input.number, neighborhood: input.neighborhood, city: input.city, state: input.state, complement: input.complement || null, paymentMethod: input.paymentMethod, couponCode: coupon.code || null, subtotal: subtotal.toFixed(2), shippingFee: shippingFee.toFixed(2), discount: coupon.discount.toFixed(2), total: total.toFixed(2), shippingMode });
     const createdOrderId = Number(inserted[0].insertId);
     if (normalizedItems.length) await tx.insert(orderItems).values(normalizedItems.map((item) => ({ ...item, orderId: createdOrderId, variantLabel: item.variantLabel || null })));
     if (coupon.code) {
@@ -147,7 +148,7 @@ export async function createOrder(input: {
     }
     return { id: createdOrderId, orderNumber };
   });
-  return { orderId: createdOrder.id, orderNumber: createdOrder.orderNumber, subtotal: subtotal.toFixed(2), shippingFee: shippingFee.toFixed(2), discount: coupon.discount.toFixed(2), total: total.toFixed(2), couponCode: coupon.code };
+  return { orderId: createdOrder.id, orderNumber: createdOrder.orderNumber, subtotal: subtotal.toFixed(2), shippingFee: shippingFee.toFixed(2), shippingMode, shippingLabel: matchedRule ? shippingRuleLabels[matchedRule.ruleType] : "Outras regiões", discount: coupon.discount.toFixed(2), total: total.toFixed(2), couponCode: coupon.code };
 }
 
 export async function createBooking(input: { customerName: string; whatsapp: string; petName: string; petSize: "small" | "medium" | "large"; serviceName: string; date: string; time: string }) {
@@ -279,6 +280,10 @@ export async function adminListCoupons() {
   return db.select().from(coupons).orderBy(desc(coupons.id));
 }
 
+export function shouldReactivateExpiredCoupon(existing: { active: boolean; expiresAt: Date | null; usedCount: number }, nextExpiresAt: Date, nextMaxUses: number | null, now = new Date()) {
+  const hasRemainingUses = nextMaxUses === null || existing.usedCount < nextMaxUses;
+  return !existing.active && Boolean(existing.expiresAt) && existing.expiresAt!.getTime() <= now.getTime() && nextExpiresAt.getTime() > now.getTime() && hasRemainingUses;
+}
 export async function adminUpsertCoupon(input: { id?: number; code: string; discountType: "percentage" | "fixed"; discountValue: string; expiresAt: Date; maxUses: number | null; active: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -290,7 +295,9 @@ export async function adminUpsertCoupon(input: { id?: number; code: string; disc
   if (!Number.isFinite(value) || value <= 0) throw new Error("Informe um valor de desconto maior que zero.");
   if (input.discountType === "percentage" && value > 100) throw new Error("O desconto percentual não pode ser maior que 100%.");
   if (input.maxUses !== null && (!Number.isInteger(input.maxUses) || input.maxUses < 1)) throw new Error("O limite total de usos deve ser um número inteiro maior que zero.");
-  if (input.id) await db.update(coupons).set({ code: input.code, discountType: input.discountType, discountValue: input.discountValue, expiresAt: input.expiresAt, maxUses: input.maxUses, active: input.active }).where(eq(coupons.id, input.id));
+  const existing = input.id ? (await db.select({ active: coupons.active, expiresAt: coupons.expiresAt, usedCount: coupons.usedCount }).from(coupons).where(eq(coupons.id, input.id)).limit(1))[0] : undefined;
+  const active = existing && shouldReactivateExpiredCoupon(existing, input.expiresAt, input.maxUses) ? true : input.active;
+  if (input.id) await db.update(coupons).set({ code: input.code, discountType: input.discountType, discountValue: input.discountValue, expiresAt: input.expiresAt, maxUses: input.maxUses, active }).where(eq(coupons.id, input.id));
   else await db.insert(coupons).values({ code: input.code, discountType: input.discountType, discountValue: input.discountValue, expiresAt: input.expiresAt, maxUses: input.maxUses, active: input.active });
 }
 
@@ -306,11 +313,12 @@ export async function adminListShippingRules() {
   return db.select().from(shippingRules).orderBy(asc(shippingRules.id));
 }
 
-export async function adminUpsertShippingRule(input: { id?: number; label: string; neighborhoods: string; fee: string; active: boolean }) {
+export async function adminUpsertShippingRule(input: { id?: number; ruleType: "local_neighborhoods" | "other_cities" | "other_regions"; neighborhoods: string; fee: string; city?: string; mode: ShippingMode; active: boolean }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
-  if (input.id) await db.update(shippingRules).set({ label: input.label, neighborhoods: input.neighborhoods, fee: input.fee, active: input.active }).where(eq(shippingRules.id, input.id));
-  else await db.insert(shippingRules).values({ label: input.label, neighborhoods: input.neighborhoods, fee: input.fee, active: input.active });
+  const values = { ruleType: input.ruleType, neighborhoods: input.ruleType === "local_neighborhoods" ? input.neighborhoods : "", fee: input.ruleType === "other_regions" || input.mode !== "fixed" ? "0.00" : input.fee, city: input.ruleType === "other_regions" ? null : input.city?.trim() || null, mode: input.ruleType === "other_regions" ? "quote" as const : input.mode, active: input.active };
+  if (input.id) await db.update(shippingRules).set(values).where(eq(shippingRules.id, input.id));
+  else await db.insert(shippingRules).values(values);
 }
 
 export async function adminDeleteShippingRule(id: number) {

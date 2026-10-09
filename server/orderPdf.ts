@@ -48,7 +48,7 @@ function sendOrderPdf(res: Response, order: Awaited<ReturnType<typeof getOrderBy
   y += 10;
   const summaryX = 350;
   const row = (label: string, value: string, bold = false, color = "#233d42") => { doc.fillColor(color).font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(bold ? 11 : 9).text(label, summaryX, y, { width: 100 }); doc.text(value, 450, y, { width: 100, align: "right" }); y += bold ? 25 : 18; };
-  row("Subtotal", money(order.subtotal)); row("Frete", money(order.shippingFee)); if (Number(order.discount) > 0) row("Desconto", `- ${money(order.discount)}`, false, "#17815d");
+  row("Subtotal", money(order.subtotal)); row("Frete", order.shippingMode === "quote" ? "Sob consulta" : money(order.shippingFee)); if (Number(order.discount) > 0) row("Desconto", `- ${money(order.discount)}`, false, "#17815d");
   doc.moveTo(summaryX, y - 6).lineTo(right, y - 6).strokeColor(teal).stroke(); row("TOTAL", money(order.total), true, teal);
   doc.fillColor(muted).font("Helvetica").fontSize(8).text("Agradecemos a preferência. Para confirmar disponibilidade, prazo e pagamento, fale conosco pelo WhatsApp.", left, 735, { width: 511, align: "center" });
   doc.fillColor(muted).fontSize(7).text("AmoPets · Rua dos Coqueiros, 245 · Jabotiana · Aracaju/SE · (79) 99662-0430", left, 752, { width: 511, align: "center" });

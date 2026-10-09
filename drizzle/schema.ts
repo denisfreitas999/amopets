@@ -75,9 +75,11 @@ export const coupons = mysqlTable("coupons", {
 
 export const shippingRules = mysqlTable("shipping_rules", {
   id: int("id").autoincrement().primaryKey(),
-  label: varchar("label", { length: 100 }).notNull(),
+  ruleType: mysqlEnum("ruleType", ["local_neighborhoods", "other_cities", "other_regions"]).default("other_regions").notNull(),
   neighborhoods: text("neighborhoods").notNull(),
   fee: decimal("fee", { precision: 10, scale: 2 }).notNull(),
+  city: varchar("city", { length: 100 }),
+  mode: mysqlEnum("mode", ["fixed", "quote", "unavailable"]).default("fixed").notNull(),
   active: boolean("active").default(true).notNull(),
 });
 
@@ -104,6 +106,7 @@ export const orders = mysqlTable("orders", {
   shippingFee: decimal("shippingFee", { precision: 10, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 10, scale: 2 }).default("0").notNull(),
   total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+  shippingMode: mysqlEnum("shippingMode", ["fixed", "quote", "unavailable"]).default("fixed").notNull(),
   status: mysqlEnum("status", ["received", "preparing", "out_for_delivery", "delivered", "cancelled"]).default("received").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });

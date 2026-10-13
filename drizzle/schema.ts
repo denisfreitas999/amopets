@@ -1,4 +1,4 @@
-import { boolean, decimal, int, mysqlEnum, mysqlTable, text, timestamp, unique, varchar } from "drizzle-orm/mysql-core";
+import { boolean, decimal, index, int, mysqlEnum, mysqlTable, text, timestamp, unique, varchar } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
   id: int("id").autoincrement().primaryKey(),
@@ -90,6 +90,7 @@ export const orderNumberSequence = mysqlTable("order_number_sequence", {
 
 export const orders = mysqlTable("orders", {
   id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").references(() => users.id, { onDelete: "set null" }),
   orderNumber: int("orderNumber").notNull().unique(),
   customerName: varchar("customerName", { length: 160 }).notNull(),
   whatsapp: varchar("whatsapp", { length: 40 }).notNull(),
@@ -109,7 +110,9 @@ export const orders = mysqlTable("orders", {
   shippingMode: mysqlEnum("shippingMode", ["fixed", "quote", "unavailable"]).default("fixed").notNull(),
   status: mysqlEnum("status", ["received", "preparing", "out_for_delivery", "delivered", "cancelled"]).default("received").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  userIdIdx: index("orders_userId_idx").on(table.userId),
+}));
 
 export const orderItems = mysqlTable("order_items", {
   id: int("id").autoincrement().primaryKey(),
@@ -124,6 +127,7 @@ export const orderItems = mysqlTable("order_items", {
 
 export const bookings = mysqlTable("bookings", {
   id: int("id").autoincrement().primaryKey(),
+  userId: int("userId").references(() => users.id, { onDelete: "set null" }),
   customerName: varchar("customerName", { length: 160 }).notNull(),
   whatsapp: varchar("whatsapp", { length: 40 }).notNull(),
   petName: varchar("petName", { length: 100 }).notNull(),
@@ -133,7 +137,9 @@ export const bookings = mysqlTable("bookings", {
   time: varchar("time", { length: 8 }).notNull(),
   status: mysqlEnum("status", ["requested", "confirmed", "refused", "completed"]).default("requested").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => ({
+  userIdIdx: index("bookings_userId_idx").on(table.userId),
+}));
 
 export const availableSlots = mysqlTable("available_slots", {
   id: int("id").autoincrement().primaryKey(),

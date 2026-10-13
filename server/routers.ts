@@ -9,7 +9,7 @@ import {
   adminCreateProduct, adminDeleteCoupon, adminDeleteGroomingService, adminDeleteProduct, adminDeleteShippingRule, adminDeleteSlot,
   adminListBookings, adminListCoupons, adminListOrders, adminListProducts, adminListShippingRules, adminListSlots,
   adminListGroomingServices, adminUpdateBookingStatus, adminUpdateOrderStatus, adminUpdateProduct, adminUpsertCoupon, adminUpsertGroomingService, adminUpsertShippingRule,
-  adminUpsertSlot, calculateCoupon, createBooking, createOrder, getAvailableSlotsForDate, getBookingsByWhatsapp, getOrdersByWhatsapp, getPublicGroomingServices, getPublicShippingRules, listActiveProducts,
+  adminUpsertSlot, calculateCoupon, createBooking, createOrder, getAvailableSlotsForDate, getPublicGroomingServices, getPublicShippingRules, listActiveProducts,
 } from "./db";
 
 const productImage = z.object({ url: z.string().startsWith("/uploads/").refine((url) => url.toLowerCase().endsWith(".webp")), alt: z.string().optional(), sortOrder: z.number().int().min(0), isCover: z.boolean() });
@@ -28,7 +28,6 @@ export const appRouter = router({
     logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
   }),
   catalog: router({ list: publicProcedure.input(z.object({ category: z.string().optional(), search: z.string().optional() }).optional()).query(({ input }) => listActiveProducts(input)) }),
-  account: router({ orders: publicProcedure.input(z.object({ whatsapp: whatsappInput })).query(({ input }) => getOrdersByWhatsapp(input.whatsapp)), bookings: publicProcedure.input(z.object({ whatsapp: whatsappInput })).query(({ input }) => getBookingsByWhatsapp(input.whatsapp)) }),
   checkout: router({
     validateCoupon: publicProcedure.input(z.object({ code: z.string().min(2), subtotal: z.number().nonnegative() })).mutation(({ input }) => calculateCoupon(input.code, input.subtotal)),
     createOrder: publicProcedure.input(z.object({ customerName: z.string().min(2), whatsapp: whatsappInput, cep: z.string().optional(), street: z.string().min(2), number: z.string().min(1), neighborhood: z.string().min(2), city: z.string().min(2), state: z.string().length(2), complement: z.string().optional(), paymentMethod: z.string().min(2), couponCode: z.string().optional(), subtotal: z.string(), shippingFee: z.string(), discount: z.string(), total: z.string(), items: z.array(z.object({ productId: z.number().int().positive(), productName: z.string(), variantLabel: z.string().optional(), quantity: z.number().int().positive(), unitPrice: z.string() })).min(1) })).mutation(({ input }) => createOrder(input)),

@@ -51,23 +51,6 @@ export async function listActiveProducts(filters?: { category?: string; search?:
   return rows.map((product) => ({ ...product, variants: variants.filter((variant) => variant.productId === product.id), images: images.filter((image) => image.productId === product.id), specs: specs.filter((spec) => spec.productId === product.id) }));
 }
 
-export async function getOrdersByWhatsapp(whatsapp: string) {
-  const db = await getDb();
-  if (!db) return [];
-  const normalized = normalizeWhatsapp(whatsapp);
-  const rows = await db.select().from(orders).where(or(eq(orders.whatsapp, normalized), eq(orders.whatsapp, whatsapp))).orderBy(desc(orders.createdAt));
-  if (!rows.length) return [];
-  const items = await db.select().from(orderItems).where(inArray(orderItems.orderId, rows.map((order) => order.id)));
-  return rows.map((order) => ({ ...order, items: items.filter((item) => item.orderId === order.id) }));
-}
-
-export async function getBookingsByWhatsapp(whatsapp: string) {
-  const db = await getDb();
-  if (!db) return [];
-  const normalized = normalizeWhatsapp(whatsapp);
-  return db.select().from(bookings).where(or(eq(bookings.whatsapp, normalized), eq(bookings.whatsapp, whatsapp)));
-}
-
 export async function getPublicShippingRules() {
   const db = await getDb();
   if (!db) return [];

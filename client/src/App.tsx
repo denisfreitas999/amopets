@@ -335,17 +335,20 @@ function Booking() {
 }
 
 function Account() {
-  const [tab, setTab] = useState("orders"); const [whatsapp, setWhatsapp] = useState(""); const normalizedWhatsapp = normalizeWhatsapp(whatsapp); const [searched, setSearched] = useState(false); const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
-  const orders = trpc.account.orders.useQuery({ whatsapp: normalizedWhatsapp }, { enabled: searched && tab === "orders", retry: false });
-  const bookings = trpc.account.bookings.useQuery({ whatsapp: normalizedWhatsapp }, { enabled: searched && tab === "bookings", retry: false });
-  const loading = tab === "orders" ? orders.isLoading : bookings.isLoading;
-  let result: ReactNode;
-  if (searched && loading) result = <div className="empty-state"><span className="empty-icon"><Zap size={28} /></span><h2>Buscando seus registros...</h2><p>Um instante.</p></div>;
-  else if (searched && tab === "orders" && orders.data?.length) result = <div className="account-records">{orders.data.map((record) => { const expanded = expandedOrders.has(record.id); return <article className="account-record account-order-record" key={record.id}><span className="empty-icon"><ShoppingBag size={21} /></span><div className="account-record-main"><div className="account-record-heading"><div><b>Pedido #{record.orderNumber}</b><small>Realizado em {new Date(record.createdAt).toLocaleDateString("pt-BR")}</small></div><strong>{formatBRL(Number(record.total))}</strong></div><div className="account-record-customer"><span>Cliente</span><b>{record.customerName}</b></div><div className="account-record-actions"><span className={`status ${record.status === "cancelled" ? "status-cancelado" : "status-recebido"}`}>{record.status === "received" ? "Recebido" : record.status === "preparing" ? "Em preparo" : record.status === "out_for_delivery" ? "Saiu para entrega" : record.status === "cancelled" ? "Cancelado" : "Entregue"}</span><button type="button" className="account-expand-button" aria-expanded={expanded} onClick={() => setExpandedOrders((current) => { const next = new Set(current); if (next.has(record.id)) next.delete(record.id); else next.add(record.id); return next; })}>{expanded ? "Ocultar itens" : `Ver itens (${record.items?.length || 0})`} <ChevronDown size={14} /></button></div>{expanded && <div className="account-order-items"><b className="account-items-title">Itens do pedido</b>{record.items?.map((item) => <span className="account-order-item" key={item.id}><span><b>{item.quantity}x {item.productName}</b>{item.variantLabel && <small>{item.variantLabel}</small>}</span><strong>{formatBRL(Number(item.unitPrice) * item.quantity)}</strong></span>)}</div>}</div></article>; })}</div>;
-  else if (searched && tab === "bookings" && bookings.data?.length) result = <div className="account-records">{bookings.data.map((record) => <article className="account-record account-booking-record" key={record.id}><span className="empty-icon"><CalendarDays size={21} /></span><div className="account-record-main"><div className="account-record-heading"><div><b>{record.petName}</b><small>{record.serviceName}</small></div><span className="status status-solicitado">{record.status === "requested" ? "Solicitado" : record.status === "confirmed" ? "Confirmado" : record.status === "refused" ? "Recusado" : "Concluído"}</span></div><div className="account-booking-meta"><span><small>Data e horário</small><b>{record.date} às {record.time}</b></span><span><small>Responsável</small><b>{record.customerName}</b></span></div></div></article>)}</div>;
-  else if (searched) result = <div className="account-found"><span className="success-icon small"><Check size={20} /></span><h2>{tab === "orders" ? "Nenhum pedido encontrado" : "Nenhum agendamento encontrado"}</h2><p>Não localizamos registros para o número <b>{whatsapp}</b>. Verifique o número digitado e tente novamente.</p><button className="button button-outline" onClick={() => setSearched(false)}>Buscar outro número</button></div>;
-  else result = <div className="empty-state"><span className="empty-icon">{tab === "orders" ? <ShoppingBag size={28} /> : <CalendarDays size={28} />}</span><h2>{tab === "orders" ? "Seus pedidos aparecem aqui" : "Seus agendamentos aparecem aqui"}</h2><p>Informe seu WhatsApp acima para consultar o histórico.</p></div>;
-  return <main className="page-shell"><div className="container account-head"><span className="eyebrow">acesso sem senha</span><h1>Minha conta</h1><p>Consulte seus pedidos e agendamentos informando o WhatsApp usado no atendimento.</p><div className="account-lookup"><input value={whatsapp} onChange={(e) => { setWhatsapp(formatWhatsapp(e.target.value)); setSearched(false); }} inputMode="tel" maxLength={15} placeholder="(79) 99999-9999" /><button className="button button-dark" onClick={() => { if (!isValidWhatsapp(whatsapp)) toast.error("Digite um WhatsApp válido para buscar."); else setSearched(true); }}>Buscar <Search size={16} /></button></div></div><div className="container account-tabs"><button className={tab === "orders" ? "active" : ""} onClick={() => { setTab("orders"); setSearched(false); }}><ShoppingBag size={18} /> Meus pedidos</button><button className={tab === "bookings" ? "active" : ""} onClick={() => { setTab("bookings"); setSearched(false); }}><CalendarDays size={18} /> Meus agendamentos</button></div><div className="container account-results">{result}</div></main>;
+  return (
+    <main className="page-shell">
+      <div className="container account-head">
+        <span className="eyebrow">minha conta</span>
+        <h1>Minha conta</h1>
+        <p>Entre com sua conta para ver seus pedidos.</p>
+      </div>
+      <div className="container empty-state">
+        <span className="empty-icon"><ShoppingBag size={28} /></span>
+        <h2>Entre com sua conta para ver seus pedidos</h2>
+        <p>A consulta pública foi desativada. Em breve você poderá acessar seu histórico entrando com sua conta.</p>
+      </div>
+    </main>
+  );
 }
 function StaticPage({ type }: { type: string }) {
   const content: Record<string, { eyebrow: string; title: string; intro: string; sections: [string, string][] }> = {

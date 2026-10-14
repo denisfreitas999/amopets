@@ -54,6 +54,7 @@ import {
   translateBookingStatus,
   translateOrderStatus,
 } from "@shared/accountFormatters";
+import { ProgressTracker } from "./components/ProgressTracker";
 import { trpc } from "@/lib/trpc";
 import "./admin-overrides.css";
 
@@ -533,6 +534,7 @@ function Account() {
                         <span className={`status ${orderStatusClass(order.status)}`}>
                           {translateOrderStatus(order.status)}
                         </span>
+                        <ProgressTracker type="order" status={order.status} />
                       </div>
                       <div className="account-order-items">
                         <span className="account-items-title">Itens do pedido</span>
@@ -597,6 +599,7 @@ function Account() {
                         <span className={`status ${bookingStatusClass(booking.status)}`}>
                           {translateBookingStatus(booking.status)}
                         </span>
+                        <ProgressTracker type="booking" status={booking.status} />
                       </div>
                       <div className="account-booking-meta">
                         <span>

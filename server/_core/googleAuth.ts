@@ -40,44 +40,53 @@ function getOAuthClient(): OAuth2Client {
 }
 
 export async function handleGoogleAuth(req: Request, res: Response) {
+  res.setHeader("Cache-Control", "no-store");
+
   if (!ENV.googleClientId || !ENV.googleClientSecret || !ENV.appUrl) {
     console.warn("[GoogleAuth] Missing credentials or APP_URL (code: MISSING_CONFIG)");
     res.status(503).send("Login com Google não configurado.");
     return;
   }
 
-  const client = getOAuthClient();
-  const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
-  const state = crypto.randomBytes(32).toString("hex");
-  const nonce = crypto.randomBytes(16).toString("hex");
+  try {
+    const client = getOAuthClient();
+    const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
+    const state = crypto.randomBytes(32).toString("hex");
+    const nonce = crypto.randomBytes(16).toString("hex");
 
-  const authUrl = client.generateAuthUrl({
-    access_type: "online",
-    response_type: "code",
-    scope: ["openid", "email", "profile"],
-    code_challenge: codeChallenge,
-    code_challenge_method: CodeChallengeMethod.S256,
-    state,
-    nonce,
-    redirect_uri: `${ENV.appUrl}/api/auth/google/callback`,
-  });
+    const authUrl = client.generateAuthUrl({
+      access_type: "online",
+      response_type: "code",
+      scope: ["openid", "email", "profile"],
+      code_challenge: codeChallenge,
+      code_challenge_method: CodeChallengeMethod.S256,
+      state,
+      nonce,
+      redirect_uri: `${ENV.appUrl}/api/auth/google/callback`,
+    });
 
-  const cookieOpts = {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    path: "/api/auth/google",
-    maxAge: 10 * 60 * 1000, // 10 minutos
-    secure: req.protocol === "https",
-  };
+    const cookieOpts = {
+      httpOnly: true,
+      sameSite: "lax" as const,
+      path: "/api/auth/google",
+      maxAge: 10 * 60 * 1000, // 10 minutos
+      secure: req.protocol === "https",
+    };
 
-  res.cookie(GOOGLE_AUTH_STATE_COOKIE, state, cookieOpts);
-  res.cookie(GOOGLE_AUTH_VERIFIER_COOKIE, codeVerifier, cookieOpts);
-  res.cookie(GOOGLE_AUTH_NONCE_COOKIE, nonce, cookieOpts);
+    res.cookie(GOOGLE_AUTH_STATE_COOKIE, state, cookieOpts);
+    res.cookie(GOOGLE_AUTH_VERIFIER_COOKIE, codeVerifier, cookieOpts);
+    res.cookie(GOOGLE_AUTH_NONCE_COOKIE, nonce, cookieOpts);
 
-  res.redirect(302, authUrl);
+    res.redirect(302, authUrl);
+  } catch {
+    console.error("[GoogleAuth] Failed to initiate Google auth (code: INIT_ERROR)");
+    res.status(500).send("Não foi possível iniciar o login com Google.");
+  }
 }
 
 export async function handleGoogleAuthCallback(req: Request, res: Response) {
+  res.setHeader("Cache-Control", "no-store");
+
   if (req.query.error) {
     console.warn("[GoogleAuth] Auth denied or errored from provider (code: PROVIDER_ERROR)");
     clearAuthCookies(res, req);

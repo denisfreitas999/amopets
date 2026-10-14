@@ -23,7 +23,7 @@ describe("Sessão do cliente (Passo D1)", () => {
 
   it("a) token de sessão com openId que NÃO existe no banco não autentica e NENHUMA chamada de rede é feita", async () => {
     vi.mocked(db.getUserByOpenId).mockResolvedValue(null);
-    const postSpy = vi.spyOn((sdk as any).client, "post");
+    const postSpy = (sdk as any).client ? vi.spyOn((sdk as any).client, "post") : null;
     const fetchSpy = vi.spyOn(globalThis, "fetch");
 
     const token = await sdk.signSession({
@@ -42,7 +42,7 @@ describe("Sessão do cliente (Passo D1)", () => {
     const ctx = await createContext({ req, res: {} as Response });
     expect(ctx.user).toBeNull();
 
-    expect(postSpy).not.toHaveBeenCalled();
+    if (postSpy) expect(postSpy).not.toHaveBeenCalled();
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 

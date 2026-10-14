@@ -105,6 +105,12 @@ function createMockReqRes(options: {
       responseData = data;
       return res;
     },
+    setHeader(name: string, val: string) {
+      return res;
+    },
+    header(name: string, val: string) {
+      return res;
+    },
     cookie(name: string, val: string, options: any) {
       setCookies.push({ name, val, options });
       return res;
@@ -155,7 +161,7 @@ describe("Passo D2 - Login com Google", () => {
     (ENV as any).googleClientId = "mock-client-id.apps.googleusercontent.com";
     (ENV as any).googleClientSecret = "mock-client-secret";
     (ENV as any).appUrl = "https://amopets.com.br";
-    ENV.ownerOpenId = "owner-google-sub-999";
+    (ENV as any).ownerOpenId = "owner-google-sub-999";
   });
 
   it("a) GET /api/auth/google responde 302 para accounts.google.com com parâmetros corretos e define 3 cookies (state, verifier, nonce)", async () => {

@@ -381,6 +381,10 @@ kbd { padding: 3px 6px; border: 1px solid var(--line); border-radius: 5px; color
 }
 
 /* Customer account records: clear hierarchy for bookings and orders. */
+.account-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--line); margin-bottom: 24px; }
+.account-tabs button { position: relative; padding: 12px 0; border: 0; background: transparent; color: var(--muted); font-size: 13px; font-weight: 700; cursor: pointer; transition: color .15s; }
+.account-tabs button.active { color: var(--ink); }
+.account-tabs button.active::after { content: ''; position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--ink); }
 .account-records { display: grid; gap: 14px; max-width: 820px; margin: 0 auto; }
 .account-record { display: grid; grid-template-columns: 45px minmax(0, 1fr); gap: 16px; padding: 20px; border: 1px solid var(--line); border-radius: 16px; background: var(--paper); box-shadow: var(--shadow-sm); text-align: left; }
 .account-record > .empty-icon { width: 45px; height: 45px; margin-top: 2px; border-radius: 15px; }

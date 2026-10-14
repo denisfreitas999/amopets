@@ -7,6 +7,10 @@ import { findShippingRule, ShippingMode, shippingRuleLabels } from "../shared/sh
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
+export function setDb(db: ReturnType<typeof drizzle> | null) {
+  _db = db;
+}
+
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try { _db = drizzle(process.env.DATABASE_URL); }
@@ -92,6 +96,7 @@ export async function createOrder(input: {
   city: string; state: string; complement?: string; paymentMethod: string; couponCode?: string;
   subtotal: string; shippingFee: string; discount: string; total: string;
   items: { productId: number; productName: string; variantLabel?: string; quantity: number; unitPrice: string }[];
+  userId?: number | null;
 }) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
@@ -118,7 +123,26 @@ export async function createOrder(input: {
     const sequenceRow = (await tx.select({ nextNumber: orderNumberSequence.nextNumber }).from(orderNumberSequence).where(eq(orderNumberSequence.id, 1)).limit(1))[0];
     if (!sequenceRow) throw new Error("Sequência de pedidos indisponível");
     const orderNumber = Number(sequenceRow.nextNumber) - 1;
-    const inserted = await tx.insert(orders).values({ orderNumber, customerName: input.customerName, whatsapp: normalizeWhatsapp(input.whatsapp), cep: input.cep || null, street: input.street, number: input.number, neighborhood: input.neighborhood, city: input.city, state: input.state, complement: input.complement || null, paymentMethod: input.paymentMethod, couponCode: coupon.code || null, subtotal: subtotal.toFixed(2), shippingFee: shippingFee.toFixed(2), discount: coupon.discount.toFixed(2), total: total.toFixed(2), shippingMode });
+    const inserted = await tx.insert(orders).values({
+      userId: input.userId ?? null,
+      orderNumber,
+      customerName: input.customerName,
+      whatsapp: normalizeWhatsapp(input.whatsapp),
+      cep: input.cep || null,
+      street: input.street,
+      number: input.number,
+      neighborhood: input.neighborhood,
+      city: input.city,
+      state: input.state,
+      complement: input.complement || null,
+      paymentMethod: input.paymentMethod,
+      couponCode: coupon.code || null,
+      subtotal: subtotal.toFixed(2),
+      shippingFee: shippingFee.toFixed(2),
+      discount: coupon.discount.toFixed(2),
+      total: total.toFixed(2),
+      shippingMode,
+    });
     const createdOrderId = Number(inserted[0].insertId);
     if (normalizedItems.length) await tx.insert(orderItems).values(normalizedItems.map((item) => ({ ...item, orderId: createdOrderId, variantLabel: item.variantLabel || null })));
     if (coupon.code) {
@@ -133,7 +157,10 @@ export async function createOrder(input: {
   return { orderId: createdOrder.id, orderNumber: createdOrder.orderNumber, subtotal: subtotal.toFixed(2), shippingFee: shippingFee.toFixed(2), shippingMode, shippingLabel: matchedRule ? shippingRuleLabels[matchedRule.ruleType] : "Outras regiões", discount: coupon.discount.toFixed(2), total: total.toFixed(2), couponCode: coupon.code };
 }
 
-export async function createBooking(input: { customerName: string; whatsapp: string; petName: string; petSize: "small" | "medium" | "large"; serviceName: string; date: string; time: string }) {
+export async function createBooking(input: {
+  customerName: string; whatsapp: string; petName: string; petSize: "small" | "medium" | "large";
+  serviceName: string; date: string; time: string; userId?: number | null;
+}) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   const service = (await db.select().from(groomingServices).where(and(eq(groomingServices.name, input.serviceName), eq(groomingServices.active, true))).limit(1))[0];
@@ -142,7 +169,12 @@ export async function createBooking(input: { customerName: string; whatsapp: str
   if (Number.isNaN(parsed.getTime()) || parsed.getTime() < Date.now() - 86400000) throw new Error("Data inválida");
   const slot = (await db.select().from(availableSlots).where(and(eq(availableSlots.weekday, parsed.getUTCDay()), eq(availableSlots.time, input.time), eq(availableSlots.active, true))).limit(1))[0];
   if (!slot) throw new Error("Horário indisponível");
-  const inserted = await db.insert(bookings).values({ ...input, whatsapp: normalizeWhatsapp(input.whatsapp), status: "requested" });
+  const inserted = await db.insert(bookings).values({
+    ...input,
+    userId: input.userId ?? null,
+    whatsapp: normalizeWhatsapp(input.whatsapp),
+    status: "requested",
+  });
   return Number(inserted[0].insertId);
 }
 
@@ -346,4 +378,82 @@ export async function adminDeleteGroomingService(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
   await db.delete(groomingServices).where(eq(groomingServices.id, id));
+}
+
+export async function getOrdersByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const userOrders = await db
+    .select({
+      id: orders.id,
+      orderNumber: orders.orderNumber,
+      createdAt: orders.createdAt,
+      status: orders.status,
+      total: orders.total,
+    })
+    .from(orders)
+    .where(eq(orders.userId, userId))
+    .orderBy(desc(orders.createdAt));
+
+  if (userOrders.length === 0) {
+    return [];
+  }
+
+  const orderIds = userOrders.map((o) => o.id);
+  const items = await db
+    .select({
+      orderId: orderItems.orderId,
+      productName: orderItems.productName,
+      variantLabel: orderItems.variantLabel,
+      quantity: orderItems.quantity,
+      unitPrice: orderItems.unitPrice,
+    })
+    .from(orderItems)
+    .where(inArray(orderItems.orderId, orderIds));
+
+  const itemsByOrderId = new Map<number, Array<{
+    productName: string;
+    variantLabel: string | null;
+    quantity: number;
+    unitPrice: string;
+  }>>();
+
+  for (const item of items) {
+    const list = itemsByOrderId.get(item.orderId) ?? [];
+    list.push({
+      productName: item.productName,
+      variantLabel: item.variantLabel,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    });
+    itemsByOrderId.set(item.orderId, list);
+  }
+
+  return userOrders.map((o) => ({
+    orderNumber: o.orderNumber,
+    createdAt: o.createdAt,
+    status: o.status,
+    total: o.total,
+    items: itemsByOrderId.get(o.id) ?? [],
+  }));
+}
+
+export async function getBookingsByUserId(userId: number) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const userBookings = await db
+    .select({
+      serviceName: bookings.serviceName,
+      petName: bookings.petName,
+      date: bookings.date,
+      time: bookings.time,
+      status: bookings.status,
+    })
+    .from(bookings)
+    .where(eq(bookings.userId, userId))
+    .orderBy(desc(bookings.date), desc(bookings.time));
+
+  return userBookings;
 }

@@ -40,12 +40,20 @@ import {
   UserRound,
   X,
   Zap,
+  LogOut,
 } from "lucide-react";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { Toaster } from "@/components/ui/sonner";
 import AdminPanel from "./pages/AdminPanel";
 import { formatWhatsapp, isValidWhatsapp, normalizeWhatsapp } from "@shared/phone";
 import { findShippingRule, type ShippingMode } from "@shared/shipping";
+import {
+  formatBookingDate,
+  formatOrderDate,
+  getFirstName,
+  translateBookingStatus,
+  translateOrderStatus,
+} from "@shared/accountFormatters";
 import { trpc } from "@/lib/trpc";
 import "./admin-overrides.css";
 
@@ -298,6 +306,15 @@ function CartPage({ cart, onChange, onRemove }: { cart: CartItem[]; onChange: (i
 
 function Checkout({ cart, onClearCart }: { cart: CartItem[]; onClearCart: () => void }) {
   const [cep, setCep] = useState(""); const [cepLoading, setCepLoading] = useState(false); const [submittedOrder, setSubmittedOrder] = useState<{ orderNumber: number; total: number; whatsapp: string; shippingMode: ShippingMode } | null>(null); const [form, setForm] = useState({ name: "", whatsapp: "", street: "", number: "", neighborhood: "", city: "Aracaju", state: "SE", complement: "", payment: "Pix", coupon: "", consent: false }); const [couponApplied, setCouponApplied] = useState<{ code: string; discount: number } | null>(null); const [highlightedField, setHighlightedField] = useState<string | null>(null); const highlightTimer = useRef<number | null>(null);
+  const meQuery = trpc.auth.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
+  const currentUser = meQuery.data;
+
+  useEffect(() => {
+    if (currentUser?.name && !form.name) {
+      setForm((current) => current.name ? current : { ...current, name: currentUser.name ?? "" });
+    }
+  }, [currentUser?.name]);
+
   const shippingRules = trpc.shipping.rules.useQuery();
   const validateCoupon = trpc.checkout.validateCoupon.useMutation({ onError: (error) => toast.error(error.message) });
   const createOrder = trpc.checkout.createOrder.useMutation({ onError: (error) => toast.error(`Não foi possível registrar o pedido: ${error.message}`) });
@@ -311,8 +328,8 @@ function Checkout({ cart, onClearCart }: { cart: CartItem[]; onClearCart: () => 
   const fieldHighlight = (field: string) => highlightedField === field ? "checkout-field-highlight" : undefined;
   const lookupCep = async () => { const normalized = cep.replace(/\D/g, ""); if (normalized.length !== 8) return; setCepLoading(true); try { const response = await fetch(`https://viacep.com.br/ws/${normalized}/json/`); const data = await response.json(); if (data.erro) throw new Error(); setForm((current) => ({ ...current, street: data.logradouro || current.street, neighborhood: data.bairro || current.neighborhood, city: data.localidade || current.city, state: data.uf || current.state })); toast.success("Endereço encontrado"); } catch { toast.error("Não encontramos esse CEP. Preencha o endereço manualmente."); } finally { setCepLoading(false); } };
   const finalize = async (event: FormEvent) => { event.preventDefault(); const missingField = requiredFields.find(([field]) => !form[field].toString().trim()); if (missingField) { toast.error(missingField[1]); focusCheckoutField(missingField[0]); return; } if (!form.consent) { toast.error("Marque a confirmação de uso dos dados para continuar."); focusCheckoutField("consent"); return; } const normalizedWhatsapp = normalizeWhatsapp(form.whatsapp); if (!isValidWhatsapp(form.whatsapp)) { toast.error("Digite um WhatsApp válido com DDD."); focusCheckoutField("whatsapp"); return; } if (shippingMode === "unavailable") { toast.error("A entrega não está disponível para este endereço. Fale conosco pelo WhatsApp para verificar outras opções."); return; } try { const quote = await createOrder.mutateAsync({ customerName: form.name, whatsapp: normalizedWhatsapp, cep, street: form.street, number: form.number, neighborhood: form.neighborhood, city: form.city, state: form.state, complement: form.complement || undefined, paymentMethod: form.payment, couponCode: couponApplied?.code, subtotal: subtotal.toFixed(2), shippingFee: shipping.toFixed(2), discount: discount.toFixed(2), total: total.toFixed(2), items: items.map(({ product, quantity }) => ({ productId: product.id, productName: product.name, variantLabel: product.variant, quantity, unitPrice: product.price.toFixed(2) })) }); const lines = items.map(({ product, quantity }) => `• ${quantity}x ${product.name} (${product.variant}) — ${formatBRL(product.price * quantity)}`).join("\n"); const shippingText = quote.shippingMode === "fixed" ? formatBRL(Number(quote.shippingFee)) : "Sob consulta"; const message = `Olá, AmoPets! Quero finalizar meu pedido.\n\n${lines}\n\nSubtotal: ${formatBRL(Number(quote.subtotal))}\nFrete: ${shippingText}\n${quote.couponCode ? `Cupom ${quote.couponCode}: -${formatBRL(Number(quote.discount))}\n` : ""}${quote.shippingMode === "quote" ? "Total parcial: " : "Total: "}${formatBRL(Number(quote.total))}\n\nCliente: ${form.name}\nWhatsApp: ${formatWhatsapp(normalizedWhatsapp)}\nEntrega: ${form.street}, ${form.number} — ${form.neighborhood}, ${form.city}/${form.state}${form.complement ? ` (${form.complement})` : ""}\nPagamento: ${form.payment}\n${quote.shippingMode === "quote" ? "\nO frete deste endereço precisa ser confirmado pela equipe antes da entrega.\n" : "\n"}Os dados do pedido foram registrados e esta mensagem será enviada via WhatsApp.`; window.open(`https://wa.me/5579996620430?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer"); setSubmittedOrder({ orderNumber: quote.orderNumber, total: Number(quote.total), whatsapp: formatWhatsapp(normalizedWhatsapp), shippingMode: quote.shippingMode }); onClearCart(); toast.success("Pedido registrado e mensagem pronta no WhatsApp"); } catch {} };
-  if (submittedOrder) return <main className="page-shell"><div className="container booking-success checkout-success"><span className="success-icon"><Check size={34} /></span><span className="eyebrow">pedido registrado</span><h1>Seu pedido foi enviado!</h1><p>O pedido <b>#{submittedOrder.orderNumber}</b> foi registrado e a mensagem foi aberta no WhatsApp. A AmoPets vai confirmar disponibilidade, entrega e pagamento por esse canal.</p><div className="booking-recap"><span><b>Status atual</b>Aguardando confirmação</span><span><b>{submittedOrder.shippingMode === "quote" ? "Total parcial" : "Total do pedido"}</b>{formatBRL(submittedOrder.total)}{submittedOrder.shippingMode === "quote" && <small> + frete a confirmar</small>}</span><span><b>WhatsApp informado</b>{submittedOrder.whatsapp}</span></div><div className="checkout-next-steps"><h2>Como acompanhar</h2><p>Abra <b>Minha conta</b>, informe o mesmo número de WhatsApp usado no pedido e toque em <b>Buscar</b>. Você poderá consultar o status e o histórico do pedido.</p></div><div className="hero-actions"><Link href="/minha-conta" className="button button-dark">Acompanhar pedido <ArrowRight size={17} /></Link><Link href="/produtos" className="button button-outline">Continuar comprando</Link></div></div></main>;
-  return <main className="page-shell"><div className="container page-head compact-head"><div><span className="eyebrow">finalização segura</span><h1>Finalizar pedido</h1><p>Sem pagamento online: combinamos tudo com você pelo WhatsApp.</p></div><div className="checkout-stepper"><span className="done"><Check size={13} /> Carrinho</span><i /><span className="active">2 · Dados</span><i /><span>3 · WhatsApp</span></div></div><form className="container checkout-layout" onSubmit={finalize} noValidate><div className="checkout-form"><div className="checkout-completion" aria-live="polite"><div className="checkout-completion-head"><span><b>Dados do pedido</b><small>{completedFields} de {completionFields.length} itens obrigatórios preenchidos</small></span><strong>{Math.round((completedFields / completionFields.length) * 100)}%</strong></div><div className="checkout-completion-track"><span style={{ width: `${(completedFields / completionFields.length) * 100}%` }} /></div></div><section className="form-card"><div className="form-card-head"><span className="number-badge">01</span><div><h2>Como podemos te encontrar?</h2><p>Usaremos esses dados apenas para confirmar o pedido.</p></div></div><div className="form-grid"><label>Nome completo *<input className={fieldHighlight("name")} data-checkout-field="name" required value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="Ex.: Ana Souza" /></label><label>WhatsApp *<input className={fieldHighlight("whatsapp")} data-checkout-field="whatsapp" required value={form.whatsapp} onChange={(e) => update("whatsapp", formatWhatsapp(e.target.value))} inputMode="tel" maxLength={15} placeholder="(79) 99999-9999" /></label></div></section><section className="form-card"><div className="form-card-head"><span className="number-badge">02</span><div><h2>Onde entregamos?</h2><p>Calculamos automaticamente onde já existe uma rota. Para outros locais, confirmamos o valor pelo WhatsApp.</p></div></div><div className="form-grid"><label>CEP <div className="input-action"><input value={cep} onChange={(e) => setCep(e.target.value)} onBlur={lookupCep} placeholder="49000-000" /><button type="button" onClick={lookupCep}>{cepLoading ? "..." : "Buscar"}</button></div></label><label>Rua / avenida *<input className={fieldHighlight("street")} data-checkout-field="street" required value={form.street} onChange={(e) => update("street", e.target.value)} placeholder="Nome da rua" /></label><label>Número *<input className={fieldHighlight("number")} data-checkout-field="number" required value={form.number} onChange={(e) => update("number", e.target.value)} placeholder="245" /></label><label>Bairro *<input className={fieldHighlight("neighborhood")} data-checkout-field="neighborhood" required value={form.neighborhood} onChange={(e) => update("neighborhood", e.target.value)} placeholder="Jabotiana" /></label><label>Cidade *<input className={fieldHighlight("city")} data-checkout-field="city" required value={form.city} onChange={(e) => update("city", e.target.value)} /></label><label>Estado *<input className={fieldHighlight("state")} data-checkout-field="state" required maxLength={2} value={form.state} onChange={(e) => update("state", e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))} placeholder="SE" /></label><label>Complemento <input value={form.complement} onChange={(e) => update("complement", e.target.value)} placeholder="Apto, referência..." /></label></div><div className={`shipping-callout shipping-${shippingMode}`}><Truck size={19} /><span><b>{shippingMode === "fixed" ? `Frete para este endereço: ${formatBRL(shipping)}` : shippingMode === "unavailable" ? "Entrega não disponível para este endereço" : "Frete sob consulta"}</b>{shippingMode === "fixed" ? "" : shippingMode === "unavailable" ? "Fale conosco pelo WhatsApp para verificar outras opções." : "A equipe confirma o valor antes da entrega. O total exibido abaixo é parcial."}</span></div></section><section className="form-card"><div className="form-card-head"><span className="number-badge">03</span><div><h2>Como prefere pagar?</h2><p>O pagamento é combinado na entrega ou retirada.</p></div></div><div className="payment-options">{["Pix", "Dinheiro", "Cartão na entrega"].map((payment) => <label key={payment} className={form.payment === payment ? "selected" : ""}><input type="radio" name="payment" checked={form.payment === payment} onChange={() => update("payment", payment)} /><span>{payment === "Pix" ? "◈" : payment === "Dinheiro" ? "◌" : "▣"}</span><b>{payment}</b></label>)}</div></section><label className="consent-row"><input className={fieldHighlight("consent")} data-checkout-field="consent" type="checkbox" checked={form.consent} onChange={(e) => update("consent", e.target.checked)} /><span>Concordo com o uso dos meus dados para atendimento deste pedido e li a <Link href="/politica-de-privacidade">Política de Privacidade</Link>. Entendo que os dados serão enviados via WhatsApp. *</span></label></div><aside className="summary-card checkout-summary"><span className="eyebrow">seu pedido</span><h2>Confere tudo?</h2><div className="order-mini-list">{items.map(({ product, quantity }) => <div key={`${product.id}-${product.variant}`}><span className="mini-emoji">{product.emoji}</span><span><b>{quantity}x {product.name}</b><small>{product.variant}</small></span><strong>{formatBRL(product.price * quantity)}</strong></div>)}</div><div className="coupon-row"><input value={form.coupon} onChange={(e) => { update("coupon", e.target.value.toUpperCase()); setCouponApplied(null); }} placeholder="Cupom de desconto" /><button type="button" disabled={!form.coupon || validateCoupon.isPending} onClick={async () => { try { const result = await validateCoupon.mutateAsync({ code: form.coupon, subtotal }); setCouponApplied(result.code ? result : null); toast.success(`Cupom aplicado: ${result.discount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} de desconto`); } catch {} }}>Aplicar</button></div>{couponApplied && <div className="discount-line"><span>{couponApplied.code}</span><b>-{formatBRL(discount)}</b></div>}<div><span>Subtotal</span><b>{formatBRL(subtotal)}</b></div><div><span>Frete</span><b>{shippingMode === "fixed" ? formatBRL(shipping) : "Sob consulta"}</b></div><div className="summary-total"><span>{shippingMode === "quote" ? "Total parcial" : "Total"}</span><strong>{formatBRL(total)}</strong></div><button type="submit" disabled={shippingMode === "unavailable" || createOrder.isPending} className="button button-whatsapp full-width"><MessageCircleIcon /> {shippingMode === "unavailable" ? "Entrega indisponível" : shippingMode === "quote" ? "Confirmar frete no WhatsApp" : "Finalizar no WhatsApp"}</button><p className="summary-note"><ShieldCheck size={15} /> {shippingMode === "quote" ? "A equipe confirmará o frete antes da entrega." : "Você não será cobrado agora."}</p></aside></form></main>;
+  if (submittedOrder) return <main className="page-shell"><div className="container booking-success checkout-success"><span className="success-icon"><Check size={34} /></span><span className="eyebrow">pedido registrado</span><h1>Seu pedido foi enviado!</h1><p>O pedido <b>#{submittedOrder.orderNumber}</b> foi registrado e a mensagem foi aberta no WhatsApp. A AmoPets vai confirmar disponibilidade, entrega e pagamento por esse canal.</p><div className="booking-recap"><span><b>Status atual</b>Aguardando confirmação</span><span><b>{submittedOrder.shippingMode === "quote" ? "Total parcial" : "Total do pedido"}</b>{formatBRL(submittedOrder.total)}{submittedOrder.shippingMode === "quote" && <small> + frete a confirmar</small>}</span><span><b>WhatsApp informado</b>{submittedOrder.whatsapp}</span></div><div className="checkout-next-steps"><h2>Como acompanhar</h2>{currentUser ? <p>Este pedido já está na sua conta. Veja o status e o histórico em Minha conta.</p> : <p>A AmoPets vai confirmar tudo pelo WhatsApp. Para acompanhar seus próximos pedidos online, entre com Google antes de comprar.</p>}</div><div className="hero-actions">{currentUser ? <Link href="/minha-conta" className="button button-dark">Acompanhar pedido <ArrowRight size={17} /></Link> : <a href="/api/auth/google" className="button button-dark">Entrar com Google <ArrowRight size={17} /></a>}<Link href="/produtos" className="button button-outline">Continuar comprando</Link></div></div></main>;
+  return <main className="page-shell"><div className="container page-head compact-head"><div><span className="eyebrow">finalização segura</span><h1>Finalizar pedido</h1><p>Sem pagamento online: combinamos tudo com você pelo WhatsApp.</p></div><div className="checkout-stepper"><span className="done"><Check size={13} /> Carrinho</span><i /><span className="active">2 · Dados</span><i /><span>3 · WhatsApp</span></div></div><form className="container checkout-layout" onSubmit={finalize} noValidate><div className="checkout-form"><div className="checkout-completion" aria-live="polite"><div className="checkout-completion-head"><span><b>Dados do pedido</b><small>{completedFields} de {completionFields.length} itens obrigatórios preenchidos</small></span><strong>{Math.round((completedFields / completionFields.length) * 100)}%</strong></div><div className="checkout-completion-track"><span style={{ width: `${(completedFields / completionFields.length) * 100}%` }} /></div></div><section className="form-card"><div className="form-card-head"><span className="number-badge">01</span><div><h2>Como podemos te encontrar?</h2><p>Usaremos esses dados apenas para confirmar o pedido.</p>{currentUser ? <p style={{ marginTop: "4px", color: "var(--muted)", fontSize: "11px" }}>Este pedido ficará na sua conta.</p> : <p style={{ marginTop: "4px", color: "var(--muted)", fontSize: "11px" }}><a href="/api/auth/google" style={{ color: "var(--ink)", textDecoration: "underline" }}>Entre com Google</a> para acompanhar este pedido depois.</p>}</div></div><div className="form-grid"><label>Nome completo *<input className={fieldHighlight("name")} data-checkout-field="name" required value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="Ex.: Ana Souza" /></label><label>WhatsApp *<input className={fieldHighlight("whatsapp")} data-checkout-field="whatsapp" required value={form.whatsapp} onChange={(e) => update("whatsapp", formatWhatsapp(e.target.value))} inputMode="tel" maxLength={15} placeholder="(79) 99999-9999" /></label></div></section><section className="form-card"><div className="form-card-head"><span className="number-badge">02</span><div><h2>Onde entregamos?</h2><p>Calculamos automaticamente onde já existe uma rota. Para outros locais, confirmamos o valor pelo WhatsApp.</p></div></div><div className="form-grid"><label>CEP <div className="input-action"><input value={cep} onChange={(e) => setCep(e.target.value)} onBlur={lookupCep} placeholder="49000-000" /><button type="button" onClick={lookupCep}>{cepLoading ? "..." : "Buscar"}</button></div></label><label>Rua / avenida *<input className={fieldHighlight("street")} data-checkout-field="street" required value={form.street} onChange={(e) => update("street", e.target.value)} placeholder="Nome da rua" /></label><label>Número *<input className={fieldHighlight("number")} data-checkout-field="number" required value={form.number} onChange={(e) => update("number", e.target.value)} placeholder="245" /></label><label>Bairro *<input className={fieldHighlight("neighborhood")} data-checkout-field="neighborhood" required value={form.neighborhood} onChange={(e) => update("neighborhood", e.target.value)} placeholder="Jabotiana" /></label><label>Cidade *<input className={fieldHighlight("city")} data-checkout-field="city" required value={form.city} onChange={(e) => update("city", e.target.value)} /></label><label>Estado *<input className={fieldHighlight("state")} data-checkout-field="state" required maxLength={2} value={form.state} onChange={(e) => update("state", e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))} placeholder="SE" /></label><label>Complemento <input value={form.complement} onChange={(e) => update("complement", e.target.value)} placeholder="Apto, referência..." /></label></div><div className={`shipping-callout shipping-${shippingMode}`}><Truck size={19} /><span><b>{shippingMode === "fixed" ? `Frete para este endereço: ${formatBRL(shipping)}` : shippingMode === "unavailable" ? "Entrega não disponível para este endereço" : "Frete sob consulta"}</b>{shippingMode === "fixed" ? "" : shippingMode === "unavailable" ? "Fale conosco pelo WhatsApp para verificar outras opções." : "A equipe confirma o valor antes da entrega. O total exibido abaixo é parcial."}</span></div></section><section className="form-card"><div className="form-card-head"><span className="number-badge">03</span><div><h2>Como prefere pagar?</h2><p>O pagamento é combinado na entrega ou retirada.</p></div></div><div className="payment-options">{["Pix", "Dinheiro", "Cartão na entrega"].map((payment) => <label key={payment} className={form.payment === payment ? "selected" : ""}><input type="radio" name="payment" checked={form.payment === payment} onChange={() => update("payment", payment)} /><span>{payment === "Pix" ? "◈" : payment === "Dinheiro" ? "◌" : "▣"}</span><b>{payment}</b></label>)}</div></section><label className="consent-row"><input className={fieldHighlight("consent")} data-checkout-field="consent" type="checkbox" checked={form.consent} onChange={(e) => update("consent", e.target.checked)} /><span>Concordo com o uso dos meus dados para atendimento deste pedido e li a <Link href="/politica-de-privacidade">Política de Privacidade</Link>. Entendo que os dados serão enviados via WhatsApp. *</span></label></div><aside className="summary-card checkout-summary"><span className="eyebrow">seu pedido</span><h2>Confere tudo?</h2><div className="order-mini-list">{items.map(({ product, quantity }) => <div key={`${product.id}-${product.variant}`}><span className="mini-emoji">{product.emoji}</span><span><b>{quantity}x {product.name}</b><small>{product.variant}</small></span><strong>{formatBRL(product.price * quantity)}</strong></div>)}</div><div className="coupon-row"><input value={form.coupon} onChange={(e) => { update("coupon", e.target.value.toUpperCase()); setCouponApplied(null); }} placeholder="Cupom de desconto" /><button type="button" disabled={!form.coupon || validateCoupon.isPending} onClick={async () => { try { const result = await validateCoupon.mutateAsync({ code: form.coupon, subtotal }); setCouponApplied(result.code ? result : null); toast.success(`Cupom aplicado: ${result.discount.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} de desconto`); } catch {} }}>Aplicar</button></div>{couponApplied && <div className="discount-line"><span>{couponApplied.code}</span><b>-{formatBRL(discount)}</b></div>}<div><span>Subtotal</span><b>{formatBRL(subtotal)}</b></div><div><span>Frete</span><b>{shippingMode === "fixed" ? formatBRL(shipping) : "Sob consulta"}</b></div><div className="summary-total"><span>{shippingMode === "quote" ? "Total parcial" : "Total"}</span><strong>{formatBRL(total)}</strong></div><button type="submit" disabled={shippingMode === "unavailable" || createOrder.isPending} className="button button-whatsapp full-width"><MessageCircleIcon /> {shippingMode === "unavailable" ? "Entrega indisponível" : shippingMode === "quote" ? "Confirmar frete no WhatsApp" : "Finalizar no WhatsApp"}</button><p className="summary-note"><ShieldCheck size={15} /> {shippingMode === "quote" ? "A equipe confirmará o frete antes da entrega." : "Você não será cobrado agora."}</p></aside></form></main>;
 }
 
 function Booking() {
@@ -321,6 +338,15 @@ function Booking() {
   const [selectedService, setSelectedService] = useState("");
   const [form, setForm] = useState({ name: "", whatsapp: "", pet: "", petSize: "medium" as "small" | "medium" | "large", date: "", time: "" });
   const [submitted, setSubmitted] = useState(false);
+  const meQuery = trpc.auth.me.useQuery(undefined, { retry: false, refetchOnWindowFocus: false });
+  const currentUser = meQuery.data;
+
+  useEffect(() => {
+    if (currentUser?.name && !form.name) {
+      setForm((current) => current.name ? current : { ...current, name: currentUser.name ?? "" });
+    }
+  }, [currentUser?.name]);
+
   const services = useMemo(() => (servicesQuery.data || []).map((service) => ({ ...service, priceSmall: Number(service.priceSmall), priceMedium: Number(service.priceMedium), priceLarge: Number(service.priceLarge), icon: service.name.toLowerCase().includes("tosa") ? "✂️" : service.name.toLowerCase().includes("banho") ? "🫧" : "🐾" })), [servicesQuery.data]);
   const selected = services.find((service) => service.name === selectedService);
   const selectedPrice = selected ? (form.petSize === "small" ? selected.priceSmall : form.petSize === "large" ? selected.priceLarge : selected.priceMedium) : 0;
@@ -331,21 +357,264 @@ function Booking() {
   useEffect(() => { if (!selectedService && services[0]) setSelectedService(services[0].name); }, [selectedService, services]);
   const submit = async (event: FormEvent) => { event.preventDefault(); const normalizedWhatsapp = normalizeWhatsapp(form.whatsapp); if (!form.name || !form.whatsapp || !form.pet || !selectedService || !form.date || !form.time) { toast.error("Preencha todos os dados para reservar."); return; } if (!isValidWhatsapp(form.whatsapp)) { toast.error("Digite um WhatsApp válido com DDD."); return; } try { await createBooking.mutateAsync({ customerName: form.name, whatsapp: normalizedWhatsapp, petName: form.pet, petSize: form.petSize, serviceName: selectedService, date: form.date, time: form.time }); setSubmitted(true); } catch {} };
   if (submitted) return <main className="page-shell"><div className="container booking-success"><span className="success-icon"><Check size={34} /></span><span className="eyebrow">pedido recebido</span><h1>Que delícia, {form.pet}!</h1><p>Seu pedido de agendamento foi registrado. A equipe AmoPets vai confirmar tudo pelo WhatsApp informado.</p><div className="booking-recap"><span><b>Serviço</b>{selectedService}</span><span><b>Data e horário</b>{new Date(form.date + "T12:00:00").toLocaleDateString("pt-BR")} · {form.time}</span><span><b>Valor estimado</b>{formatBRL(selectedPrice)}</span></div><div className="hero-actions"><Link href="/" className="button button-dark">Voltar para a home</Link><Link href="/minha-conta" className="button button-outline">Ver meus agendamentos</Link></div></div></main>;
-  return <main className="page-shell booking-page"><div className="container booking-hero"><div><span className="eyebrow">banho & tosa AmoPets</span><h1>Um cuidado que começa antes do banho.</h1><p>Escolha o melhor momento para o seu pet receber atenção, calma e um banho gostoso.</p><div className="booking-trust"><span><Heart size={17} /> sem pressa</span><span><ShieldCheck size={17} /> profissionais cuidadosos</span><span><Clock3 size={17} /> hora marcada</span></div></div><div className="booking-hero-art"><img src={IMAGES.grooming} alt="Cuidado de banho e tosa" width="800" height="620" loading="lazy" /><span>seu pet merece esse <b>respiro</b></span></div></div><div className="container booking-layout"><div className="booking-progress"><span className={step >= 1 ? "active" : ""}><b>1</b> Identificação</span><i /><span className={step >= 2 ? "active" : ""}><b>2</b> Serviço</span><i /><span className={step >= 3 ? "active" : ""}><b>3</b> Horário</span></div><form className="booking-card" onSubmit={submit}>{step === 1 && <div className="booking-step"><span className="eyebrow">vamos começar</span><h2>Quem vamos receber?</h2><p>Assim associamos o agendamento ao seu WhatsApp, sem criar senha.</p><label>Seu nome *<input required value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="Ex.: Ana Souza" /></label><label>Seu WhatsApp *<input required value={form.whatsapp} onChange={(e) => update("whatsapp", formatWhatsapp(e.target.value))} inputMode="tel" maxLength={15} placeholder="(79) 99999-9999" /></label><label>Nome do pet *<input required value={form.pet} onChange={(e) => update("pet", e.target.value)} placeholder="Ex.: Pipoca" /></label><label>Porte do pet *<select value={form.petSize} onChange={(e) => update("petSize", e.target.value)}><option value="small">Pequeno — até 10 kg</option><option value="medium">Médio — de 10 a 25 kg</option><option value="large">Grande — acima de 25 kg</option></select><small className="field-hint">Faixas aproximadas para ajudar na escolha. Se estiver em dúvida, fale com a equipe AmoPets.</small></label><button type="button" className="button button-dark full-width" onClick={() => { if (form.name && form.whatsapp && form.pet) setStep(2); else toast.error("Preencha seus dados para continuar."); }}>Continuar <ArrowRight size={17} /></button></div>}{step === 2 && <div className="booking-step wide-step"><span className="eyebrow">feito para {form.pet}</span><h2>Qual cuidado você escolhe?</h2>{servicesQuery.isLoading ? <p>Carregando serviços...</p> : services.length ? <div className="service-grid">{services.map((service) => <button type="button" key={service.name} className={selectedService === service.name ? "selected" : ""} onClick={() => setSelectedService(service.name)}><span>{service.icon}</span><b>{service.name}</b><small>{service.description || "Cuidado especial para o seu pet."}</small><strong>A partir de {formatBRL(service.priceSmall)}</strong></button>)}</div> : <div className="empty-state"><h3>Nenhum serviço disponível</h3><p>A agenda ainda não foi configurada pela loja.</p></div>}<div className="booking-nav"><button type="button" className="button button-ghost" onClick={() => setStep(1)}><ChevronLeft size={16} /> Voltar</button><button type="button" className="button button-dark" disabled={!selectedService} onClick={() => setStep(3)}>Escolher horário <ArrowRight size={17} /></button></div></div>}{step === 3 && <div className="booking-step"><span className="eyebrow">último passo</span><h2>Quando fica melhor?</h2><label>Data desejada *<input required type="date" min={new Date().toISOString().split("T")[0]} value={form.date} onChange={(e) => { update("date", e.target.value); update("time", ""); }} /></label><span className="field-label">Horários disponíveis *</span>{slotsQuery.isLoading ? <p>Carregando horários...</p> : <div className="time-grid">{(slotsQuery.data || []).map((slot) => <button type="button" key={slot.id} className={form.time === slot.time ? "active" : ""} onClick={() => update("time", slot.time)}>{slot.time}</button>)}</div>}{form.date && !slotsQuery.isLoading && !slotsQuery.data?.length && <p>Nenhum horário disponível para esta data.</p>}<div className="booking-recap inline"><span><b>Serviço · porte</b>{selectedService} · {form.petSize === "small" ? "pequeno (até 10 kg)" : form.petSize === "large" ? "grande (acima de 25 kg)" : "médio (10–25 kg)"}</span><span><b>Valor estimado</b>{formatBRL(selectedPrice)}</span></div><div className="booking-nav"><button type="button" className="button button-ghost" onClick={() => setStep(2)}><ChevronLeft size={16} /> Voltar</button><button type="submit" className="button button-dark" disabled={!form.time || createBooking.isPending}>Solicitar agendamento <Check size={17} /></button></div></div>}</form></div></main>;
+  return <main className="page-shell booking-page"><div className="container booking-hero"><div><span className="eyebrow">banho & tosa AmoPets</span><h1>Um cuidado que começa antes do banho.</h1><p>Escolha o melhor momento para o seu pet receber atenção, calma e um banho gostoso.</p><div className="booking-trust"><span><Heart size={17} /> sem pressa</span><span><ShieldCheck size={17} /> profissionais cuidadosos</span><span><Clock3 size={17} /> hora marcada</span></div></div><div className="booking-hero-art"><img src={IMAGES.grooming} alt="Cuidado de banho e tosa" width="800" height="620" loading="lazy" /><span>seu pet merece esse <b>respiro</b></span></div></div><div className="container booking-layout"><div className="booking-progress"><span className={step >= 1 ? "active" : ""}><b>1</b> Identificação</span><i /><span className={step >= 2 ? "active" : ""}><b>2</b> Serviço</span><i /><span className={step >= 3 ? "active" : ""}><b>3</b> Horário</span></div><form className="booking-card" onSubmit={submit}>{step === 1 && <div className="booking-step"><span className="eyebrow">vamos começar</span><h2>Quem vamos receber?</h2>{currentUser ? <p>Este agendamento ficará na sua conta.</p> : <p><a href="/api/auth/google" style={{ color: "var(--ink)", textDecoration: "underline" }}>Entre com Google</a> para acompanhar este agendamento depois.</p>}<label>Seu nome *<input required value={form.name} onChange={(e) => update("name", e.target.value)} placeholder="Ex.: Ana Souza" /></label><label>Seu WhatsApp *<input required value={form.whatsapp} onChange={(e) => update("whatsapp", formatWhatsapp(e.target.value))} inputMode="tel" maxLength={15} placeholder="(79) 99999-9999" /></label><label>Nome do pet *<input required value={form.pet} onChange={(e) => update("pet", e.target.value)} placeholder="Ex.: Pipoca" /></label><label>Porte do pet *<select value={form.petSize} onChange={(e) => update("petSize", e.target.value)}><option value="small">Pequeno — até 10 kg</option><option value="medium">Médio — de 10 a 25 kg</option><option value="large">Grande — acima de 25 kg</option></select><small className="field-hint">Faixas aproximadas para ajudar na escolha. Se estiver em dúvida, fale com a equipe AmoPets.</small></label><button type="button" className="button button-dark full-width" onClick={() => { if (form.name && form.whatsapp && form.pet) setStep(2); else toast.error("Preencha seus dados para continuar."); }}>Continuar <ArrowRight size={17} /></button></div>}{step === 2 && <div className="booking-step wide-step"><span className="eyebrow">feito para {form.pet}</span><h2>Qual cuidado você escolhe?</h2>{servicesQuery.isLoading ? <p>Carregando serviços...</p> : services.length ? <div className="service-grid">{services.map((service) => <button type="button" key={service.name} className={selectedService === service.name ? "selected" : ""} onClick={() => setSelectedService(service.name)}><span>{service.icon}</span><b>{service.name}</b><small>{service.description || "Cuidado especial para o seu pet."}</small><strong>A partir de {formatBRL(service.priceSmall)}</strong></button>)}</div> : <div className="empty-state"><h3>Nenhum serviço disponível</h3><p>A agenda ainda não foi configurada pela loja.</p></div>}<div className="booking-nav"><button type="button" className="button button-ghost" onClick={() => setStep(1)}><ChevronLeft size={16} /> Voltar</button><button type="button" className="button button-dark" disabled={!selectedService} onClick={() => setStep(3)}>Escolher horário <ArrowRight size={17} /></button></div></div>}{step === 3 && <div className="booking-step"><span className="eyebrow">último passo</span><h2>Quando fica melhor?</h2><label>Data desejada *<input required type="date" min={new Date().toISOString().split("T")[0]} value={form.date} onChange={(e) => { update("date", e.target.value); update("time", ""); }} /></label><span className="field-label">Horários disponíveis *</span>{slotsQuery.isLoading ? <p>Carregando horários...</p> : <div className="time-grid">{(slotsQuery.data || []).map((slot) => <button type="button" key={slot.id} className={form.time === slot.time ? "active" : ""} onClick={() => update("time", slot.time)}>{slot.time}</button>)}</div>}{form.date && !slotsQuery.isLoading && !slotsQuery.data?.length && <p>Nenhum horário disponível para esta data.</p>}<div className="booking-recap inline"><span><b>Serviço · porte</b>{selectedService} · {form.petSize === "small" ? "pequeno (até 10 kg)" : form.petSize === "large" ? "grande (acima de 25 kg)" : "médio (10–25 kg)"}</span><span><b>Valor estimado</b>{formatBRL(selectedPrice)}</span></div><div className="booking-nav"><button type="button" className="button button-ghost" onClick={() => setStep(2)}><ChevronLeft size={16} /> Voltar</button><button type="submit" className="button button-dark" disabled={!form.time || createBooking.isPending}>Solicitar agendamento <Check size={17} /></button></div></div>}</form></div></main>;
 }
 
 function Account() {
+  const [tab, setTab] = useState<"orders" | "bookings">("orders");
+  const utils = trpc.useUtils();
+  const meQuery = trpc.auth.me.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const user = meQuery.data;
+
+  const logoutMutation = trpc.auth.logout.useMutation({
+    onSuccess: async () => {
+      utils.auth.me.setData(undefined, null);
+      await utils.auth.me.invalidate();
+      toast.success("Você saiu da sua conta.");
+    },
+    onError: () => {
+      toast.error("Não foi possível sair.");
+    },
+  });
+
+  const ordersQuery = trpc.account.orders.useQuery(undefined, {
+    enabled: Boolean(user),
+    retry: false,
+  });
+
+  const bookingsQuery = trpc.account.bookings.useQuery(undefined, {
+    enabled: Boolean(user),
+    retry: false,
+  });
+
+  if (meQuery.isLoading) {
+    return (
+      <main className="page-shell">
+        <div className="container account-head">
+          <span className="eyebrow">minha conta</span>
+          <h1>Minha conta</h1>
+          <p>Carregando informações da conta...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!user) {
+    return (
+      <main className="page-shell">
+        <div className="container account-head">
+          <span className="eyebrow">minha conta</span>
+          <h1>Minha conta</h1>
+          <p>Acesse seu histórico de compras e agendamentos de forma rápida e segura.</p>
+        </div>
+        <div className="container empty-state">
+          <span className="empty-icon"><ShoppingBag size={28} /></span>
+          <h2>Acesse sua conta</h2>
+          <p>Entre com sua conta Google para acompanhar seus pedidos e serviços agendados.</p>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", marginTop: "10px" }}>
+            <a href="/api/auth/google" className="button button-dark">
+              Entrar com Google <ArrowRight size={17} />
+            </a>
+            <small style={{ color: "var(--muted)", fontSize: "11px" }}>
+              Pedidos feitos sem login são acompanhados pelo WhatsApp.
+            </small>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const firstName = getFirstName(user.name) || "Cliente";
+
+  const orderStatusClass = (status: string) => {
+    switch (status) {
+      case "received": return "status-recebido";
+      case "preparing": return "status-em-preparo";
+      case "out_for_delivery": return "status-saiu-p/entrega";
+      case "delivered": return "status-entregue";
+      case "cancelled": return "status-cancelado";
+      default: return "";
+    }
+  };
+
+  const bookingStatusClass = (status: string) => {
+    switch (status) {
+      case "requested": return "status-solicitado";
+      case "confirmed": return "status-confirmado";
+      case "refused": return "status-cancelado";
+      case "completed": return "status-entregue";
+      default: return "";
+    }
+  };
+
   return (
     <main className="page-shell">
       <div className="container account-head">
-        <span className="eyebrow">minha conta</span>
-        <h1>Minha conta</h1>
-        <p>Entre com sua conta para ver seus pedidos.</p>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px", flexWrap: "wrap" }}>
+          <div>
+            <span className="eyebrow">minha conta</span>
+            <h1>Olá, {firstName}!</h1>
+            <p>Acompanhe aqui o andamento dos seus pedidos e agendamentos na AmoPets.</p>
+          </div>
+          <button
+            type="button"
+            className="button button-outline"
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+            style={{ marginTop: "6px" }}
+          >
+            <LogOut size={16} /> Sair
+          </button>
+        </div>
       </div>
-      <div className="container empty-state">
-        <span className="empty-icon"><ShoppingBag size={28} /></span>
-        <h2>Entre com sua conta para ver seus pedidos</h2>
-        <p>A consulta pública foi desativada. Em breve você poderá acessar seu histórico entrando com sua conta.</p>
+
+      <div className="container" style={{ maxWidth: "820px" }}>
+        <div className="account-tabs">
+          <button
+            type="button"
+            className={tab === "orders" ? "active" : ""}
+            onClick={() => setTab("orders")}
+          >
+            Meus pedidos {ordersQuery.data ? `(${ordersQuery.data.length})` : ""}
+          </button>
+          <button
+            type="button"
+            className={tab === "bookings" ? "active" : ""}
+            onClick={() => setTab("bookings")}
+          >
+            Meus agendamentos {bookingsQuery.data ? `(${bookingsQuery.data.length})` : ""}
+          </button>
+        </div>
+
+        {tab === "orders" && (
+          <div>
+            {ordersQuery.isLoading && (
+              <div className="empty-state">
+                <p>Carregando seus pedidos...</p>
+              </div>
+            )}
+
+            {ordersQuery.isError && (
+              <div className="empty-state">
+                <span className="empty-icon"><CircleHelp size={28} /></span>
+                <h2>Não foi possível carregar os pedidos</h2>
+                <p>Ocorreu um erro ao buscar seus pedidos. Tente novamente em instantes.</p>
+              </div>
+            )}
+
+            {!ordersQuery.isLoading && !ordersQuery.isError && (!ordersQuery.data || ordersQuery.data.length === 0) && (
+              <div className="empty-state">
+                <span className="empty-icon"><ShoppingBag size={28} /></span>
+                <h2>Nenhum pedido encontrado</h2>
+                <p>Você ainda não tem pedidos vinculados à sua conta.</p>
+                <Link href="/produtos" className="button button-dark">
+                  Explorar produtos <ArrowRight size={17} />
+                </Link>
+              </div>
+            )}
+
+            {!ordersQuery.isLoading && !ordersQuery.isError && ordersQuery.data && ordersQuery.data.length > 0 && (
+              <div className="account-records">
+                {ordersQuery.data.map((order) => (
+                  <article key={order.orderNumber} className="account-record">
+                    <span className="empty-icon"><PackageCheck size={22} /></span>
+                    <div className="account-record-main">
+                      <div className="account-record-heading">
+                        <div>
+                          <b>Pedido #{order.orderNumber}</b>
+                          <small>{formatOrderDate(order.createdAt)}</small>
+                        </div>
+                        <strong>{formatBRL(Number(order.total))}</strong>
+                      </div>
+                      <div className="account-record-actions">
+                        <span className={`status ${orderStatusClass(order.status)}`}>
+                          {translateOrderStatus(order.status)}
+                        </span>
+                      </div>
+                      <div className="account-order-items">
+                        <span className="account-items-title">Itens do pedido</span>
+                        {order.items.map((item, idx) => (
+                          <div key={idx} className="account-order-item">
+                            <span>
+                              <b>{item.quantity}x {item.productName}</b>
+                              {item.variantLabel && <small>{item.variantLabel}</small>}
+                            </span>
+                            <strong>{formatBRL(Number(item.unitPrice) * item.quantity)}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab === "bookings" && (
+          <div>
+            {bookingsQuery.isLoading && (
+              <div className="empty-state">
+                <p>Carregando seus agendamentos...</p>
+              </div>
+            )}
+
+            {bookingsQuery.isError && (
+              <div className="empty-state">
+                <span className="empty-icon"><CircleHelp size={28} /></span>
+                <h2>Não foi possível carregar os agendamentos</h2>
+                <p>Ocorreu um erro ao buscar seus agendamentos. Tente novamente em instantes.</p>
+              </div>
+            )}
+
+            {!bookingsQuery.isLoading && !bookingsQuery.isError && (!bookingsQuery.data || bookingsQuery.data.length === 0) && (
+              <div className="empty-state">
+                <span className="empty-icon"><CalendarDays size={28} /></span>
+                <h2>Nenhum agendamento encontrado</h2>
+                <p>Você ainda não tem agendamentos vinculados à sua conta.</p>
+                <Link href="/agendamento" className="button button-dark">
+                  Agendar banho & tosa <ArrowRight size={17} />
+                </Link>
+              </div>
+            )}
+
+            {!bookingsQuery.isLoading && !bookingsQuery.isError && bookingsQuery.data && bookingsQuery.data.length > 0 && (
+              <div className="account-records">
+                {bookingsQuery.data.map((booking, idx) => (
+                  <article key={idx} className="account-record">
+                    <span className="empty-icon"><Bath size={22} /></span>
+                    <div className="account-record-main">
+                      <div className="account-record-heading">
+                        <div>
+                          <b>{booking.serviceName}</b>
+                          <small>Pet: {booking.petName}</small>
+                        </div>
+                      </div>
+                      <div className="account-record-actions">
+                        <span className={`status ${bookingStatusClass(booking.status)}`}>
+                          {translateBookingStatus(booking.status)}
+                        </span>
+                      </div>
+                      <div className="account-booking-meta">
+                        <span>
+                          <small>Data</small>
+                          <b>{formatBookingDate(booking.date)}</b>
+                        </span>
+                        <span>
+                          <small>Horário</small>
+                          <b>{booking.time}</b>
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </main>
   );
@@ -385,7 +654,7 @@ function AppShell() {
   const toggleFavorite = (id: number) => setFavorites((items) => items.includes(id) ? items.filter((item) => item !== id) : [...items, id]);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0); const cartTotal = cart.reduce((sum, item) => { const product = products.find((p) => p.id === item.productId); return sum + (product ? withVariant(product, item.variant).price : 0) * item.quantity; }, 0);
   const detailMatch = location.match(/^\/produtos\/([^/]+)/); const detailProduct = detailMatch ? products.find((product) => product.slug === detailMatch[1]) : undefined;
-  useEffect(() => { const titles: Record<string, [string, string]> = { "/": ["AmoPets — Petshop em Aracaju", "Tudo para o seu pet em Aracaju: produtos, banho e tosa com atendimento próximo."], "/produtos": ["Catálogo AmoPets — Produtos para pets", "Explore rações, petiscos, higiene, farmácia e acessórios para seu pet."], "/carrinho": ["Carrinho — AmoPets", "Revise seus produtos antes de finalizar o pedido pelo WhatsApp."], "/finalizar-pedido": ["Finalizar pedido — AmoPets", "Informe seus dados e combine a entrega com a AmoPets pelo WhatsApp."], "/agendamento": ["Banho e tosa — AmoPets", "Agende banho e tosa com hora marcada em Aracaju."], "/minha-conta": ["Meus pedidos e agendamentos — AmoPets", "Consulte seus pedidos e agendamentos pelo WhatsApp."], "/sobre": ["Quem somos — AmoPets", "Conheça a AmoPets, petshop afetivo em Aracaju."], "/contato": ["Contato — AmoPets", "Fale com a AmoPets por WhatsApp, Instagram ou na loja física."] }; const [title, description] = detailProduct ? [`${detailProduct.name} — AmoPets`, `${detailProduct.description} Compre em Aracaju e região.`] : (titles[location] || ["AmoPets — Petshop em Aracaju", "Produtos e cuidados para pets em Aracaju e região."]); document.title = title; const setMeta = (key: string, value: string, property = false) => { const selector = property ? `meta[property="${key}"]` : `meta[name="${key}"]`; let node = document.head.querySelector(selector) as HTMLMetaElement | null; if (!node) { node = document.createElement("meta"); if (property) node.setAttribute("property", key); else node.setAttribute("name", key); document.head.appendChild(node); } node.content = value; }; setMeta("description", description); setMeta("og:title", title, true); setMeta("og:description", description, true); setMeta("og:url", window.location.href, true); let script = document.head.querySelector("script[data-amopets-jsonld]") as HTMLScriptElement | null; if (!script) { script = document.createElement("script"); script.type = "application/ld+json"; script.dataset.amopetsJsonld = "true"; document.head.appendChild(script); } const jsonLd = detailProduct ? { "@context": "https://schema.org", "@type": "Product", name: detailProduct.name, description: detailProduct.description, image: detailProduct.images.map((image) => new URL(image.url, window.location.origin).href), offers: { "@type": "Offer", priceCurrency: "BRL", price: detailProduct.price.toFixed(2), availability: detailProduct.stock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock" } } : { "@context": "https://schema.org", "@type": ["LocalBusiness", "Store"], name: "AmoPets", description: "Petshop afetivo em Aracaju", telephone: "+55 79 99662-0430", address: { "@type": "PostalAddress", streetAddress: "Rua dos Coqueiros, 245", addressLocality: "Aracaju", addressRegion: "SE", addressCountry: "BR" }, openingHours: ["Mo-Sa 08:00-20:00", "Su 08:00-13:00"] }; script.textContent = JSON.stringify(jsonLd); }, [location, detailProduct?.id]);
+  useEffect(() => { const titles: Record<string, [string, string]> = { "/": ["AmoPets — Petshop em Aracaju", "Tudo para o seu pet em Aracaju: produtos, banho e tosa com atendimento próximo."], "/produtos": ["Catálogo AmoPets — Produtos para pets", "Explore rações, petiscos, higiene, farmácia e acessórios para seu pet."], "/carrinho": ["Carrinho — AmoPets", "Revise seus produtos antes de finalizar o pedido pelo WhatsApp."], "/finalizar-pedido": ["Finalizar pedido — AmoPets", "Informe seus dados e combine a entrega com a AmoPets pelo WhatsApp."], "/agendamento": ["Banho e tosa — AmoPets", "Agende banho e tosa com hora marcada em Aracaju."], "/minha-conta": ["Meus pedidos e agendamentos — AmoPets", "Veja seus pedidos e agendamentos entrando com sua conta Google."], "/sobre": ["Quem somos — AmoPets", "Conheça a AmoPets, petshop afetivo em Aracaju."], "/contato": ["Contato — AmoPets", "Fale com a AmoPets por WhatsApp, Instagram ou na loja física."] }; const [title, description] = detailProduct ? [`${detailProduct.name} — AmoPets`, `${detailProduct.description} Compre em Aracaju e região.`] : (titles[location] || ["AmoPets — Petshop em Aracaju", "Produtos e cuidados para pets em Aracaju e região."]); document.title = title; const setMeta = (key: string, value: string, property = false) => { const selector = property ? `meta[property="${key}"]` : `meta[name="${key}"]`; let node = document.head.querySelector(selector) as HTMLMetaElement | null; if (!node) { node = document.createElement("meta"); if (property) node.setAttribute("property", key); else node.setAttribute("name", key); document.head.appendChild(node); } node.content = value; }; setMeta("description", description); setMeta("og:title", title, true); setMeta("og:description", description, true); setMeta("og:url", window.location.href, true); let script = document.head.querySelector("script[data-amopets-jsonld]") as HTMLScriptElement | null; if (!script) { script = document.createElement("script"); script.type = "application/ld+json"; script.dataset.amopetsJsonld = "true"; document.head.appendChild(script); } const jsonLd = detailProduct ? { "@context": "https://schema.org", "@type": "Product", name: detailProduct.name, description: detailProduct.description, image: detailProduct.images.map((image) => new URL(image.url, window.location.origin).href), offers: { "@type": "Offer", priceCurrency: "BRL", price: detailProduct.price.toFixed(2), availability: detailProduct.stock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock" } } : { "@context": "https://schema.org", "@type": ["LocalBusiness", "Store"], name: "AmoPets", description: "Petshop afetivo em Aracaju", telephone: "+55 79 99662-0430", address: { "@type": "PostalAddress", streetAddress: "Rua dos Coqueiros, 245", addressLocality: "Aracaju", addressRegion: "SE", addressCountry: "BR" }, openingHours: ["Mo-Sa 08:00-20:00", "Su 08:00-13:00"] }; script.textContent = JSON.stringify(jsonLd); }, [location, detailProduct?.id]);
   let content: ReactNode; if (location === "/" || location === "") content = <Home onAdd={addToCart} favorites={favorites} onFavorite={toggleFavorite} />; else if (location === "/produtos") content = <Catalog onAdd={addToCart} favorites={favorites} onFavorite={toggleFavorite} />; else if (detailProduct) content = <ProductDetail product={detailProduct} onAdd={addToCart} onBuy={(product) => { addToCart(product); setLocation("/finalizar-pedido"); }} favorite={favorites.includes(detailProduct.id)} onFavorite={() => toggleFavorite(detailProduct.id)} />; else if (location === "/carrinho") content = <CartPage cart={cart} onChange={changeCart} onRemove={removeCart} />; else if (location === "/finalizar-pedido") content = <Checkout cart={cart} onClearCart={() => setCart([])} />; else if (location === "/agendamento") content = <Booking />; else if (location === "/minha-conta") content = <Account />; else if (location === "/favoritos") content = <main className="page-shell"><div className="container page-head"><span className="eyebrow">seus queridinhos</span><h1>Favoritos</h1><p>Produtos salvos para rever quando quiser.</p></div><div className="container">{favorites.length ? <div className="product-grid">{products.filter((product) => favorites.includes(product.id)).map((product) => <ProductCard key={product.id} product={product} favorite onFavorite={() => toggleFavorite(product.id)} onAdd={() => addToCart(product)} />)}</div> : <div className="empty-state"><span className="empty-icon"><Heart size={28} /></span><h2>Nenhum favorito ainda</h2><p>Toque no coração dos produtos que combinam com o seu pet.</p><Link href="/produtos" className="button button-dark">Explorar produtos <ArrowRight size={17} /></Link></div>}</div></main>; else if (location === "/admin") content = <AdminPanel />; else if (["/sobre", "/contato", "/politica-de-privacidade", "/politica-de-cookies", "/politica-de-frete", "/termos-de-uso"].includes(location)) content = <StaticPage type={location} />; else content = <main className="page-shell"><div className="container empty-state"><span className="empty-icon"><CircleHelp size={28} /></span><h1>Página não encontrada</h1><p>Vamos voltar para um lugar conhecido?</p><Link href="/" className="button button-dark">Ir para a home</Link></div></main>;
   const isAdmin = location === "/admin"; return <div className="app">{!isAdmin && <Header cartCount={cartCount} favoriteCount={favorites.length} products={products} catalogLoading={catalogQuery.isLoading} onOpenMenu={() => setMenuOpen(true)} />}{!isAdmin && menuOpen && <div className="mobile-drawer-backdrop" onClick={() => setMenuOpen(false)}><div className="mobile-drawer" onClick={(event) => event.stopPropagation()}><div className="mobile-drawer-head"><Logo compact /><button className="icon-button" onClick={() => setMenuOpen(false)}><X size={20} /></button></div><Link href="/produtos" onClick={() => setMenuOpen(false)}>Catálogo <ArrowRight size={16} /></Link><Link href="/agendamento" onClick={() => setMenuOpen(false)}>Banho & tosa <ArrowRight size={16} /></Link><Link href="/minha-conta" onClick={() => setMenuOpen(false)}>Minha conta <ArrowRight size={16} /></Link><Link href="/favoritos" onClick={() => setMenuOpen(false)}>Favoritos {favorites.length > 0 && <span className="mobile-menu-count">{favorites.length}</span>} <ArrowRight size={16} /></Link><Link href="/sobre" onClick={() => setMenuOpen(false)}>Sobre a AmoPets <ArrowRight size={16} /></Link><div className="mobile-drawer-cats">{categories.slice(0, 5).map((category) => <Link href={`/produtos?categoria=${encodeURIComponent(category.name)}`} key={category.name} onClick={() => setMenuOpen(false)}>{category.icon} {category.name}</Link>)}</div></div></div>}{content}{!isAdmin && <><FloatingCart count={cartCount} total={cartTotal} /><Footer /><CookieBanner /></>}</div>;
 }

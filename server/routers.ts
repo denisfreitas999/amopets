@@ -3,7 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
-import { adminProcedure, publicProcedure, router } from "./_core/trpc";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { ADMIN_COOKIE, createAdminToken, getAdminByUsername, markAdminLogin, verifyAdminPassword } from "./adminAuth";
 import { checkLoginRateLimit, clearLoginRateLimit, recordLoginFailure, resolveClientIp } from "./adminRateLimit";
 import { isValidWhatsapp, normalizeWhatsapp } from "../shared/phone";
@@ -11,7 +11,7 @@ import {
   adminCreateProduct, adminDeleteCoupon, adminDeleteGroomingService, adminDeleteProduct, adminDeleteShippingRule, adminDeleteSlot,
   adminListBookings, adminListCoupons, adminListOrders, adminListProducts, adminListShippingRules, adminListSlots,
   adminListGroomingServices, adminUpdateBookingStatus, adminUpdateOrderStatus, adminUpdateProduct, adminUpsertCoupon, adminUpsertGroomingService, adminUpsertShippingRule,
-  adminUpsertSlot, calculateCoupon, createBooking, createOrder, getAvailableSlotsForDate, getPublicGroomingServices, getPublicShippingRules, listActiveProducts,
+  adminUpsertSlot, calculateCoupon, createBooking, createOrder, getAvailableSlotsForDate, getBookingsByUserId, getOrdersByUserId, getPublicGroomingServices, getPublicShippingRules, listActiveProducts,
 } from "./db";
 
 const productImage = z.object({ url: z.string().startsWith("/uploads/").refine((url) => url.toLowerCase().endsWith(".webp")), alt: z.string().optional(), sortOrder: z.number().int().min(0), isCover: z.boolean() });
@@ -31,12 +31,16 @@ export const appRouter = router({
     me: publicProcedure.query((opts) => opts.ctx.user),
     logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
   }),
+  account: router({
+    orders: protectedProcedure.query(({ ctx }) => getOrdersByUserId(ctx.user.id)),
+    bookings: protectedProcedure.query(({ ctx }) => getBookingsByUserId(ctx.user.id)),
+  }),
   catalog: router({ list: publicProcedure.input(z.object({ category: z.string().optional(), search: z.string().optional() }).optional()).query(({ input }) => listActiveProducts(input)) }),
   checkout: router({
     validateCoupon: publicProcedure.input(z.object({ code: z.string().min(2), subtotal: z.number().nonnegative() })).mutation(({ input }) => calculateCoupon(input.code, input.subtotal)),
-    createOrder: publicProcedure.input(z.object({ customerName: z.string().min(2), whatsapp: whatsappInput, cep: z.string().optional(), street: z.string().min(2), number: z.string().min(1), neighborhood: z.string().min(2), city: z.string().min(2), state: z.string().length(2), complement: z.string().optional(), paymentMethod: z.string().min(2), couponCode: z.string().optional(), subtotal: z.string(), shippingFee: z.string(), discount: z.string(), total: z.string(), items: z.array(z.object({ productId: z.number().int().positive(), productName: z.string(), variantLabel: z.string().optional(), quantity: z.number().int().positive(), unitPrice: z.string() })).min(1) })).mutation(({ input }) => createOrder(input)),
+    createOrder: publicProcedure.input(z.object({ customerName: z.string().min(2), whatsapp: whatsappInput, cep: z.string().optional(), street: z.string().min(2), number: z.string().min(1), neighborhood: z.string().min(2), city: z.string().min(2), state: z.string().length(2), complement: z.string().optional(), paymentMethod: z.string().min(2), couponCode: z.string().optional(), subtotal: z.string(), shippingFee: z.string(), discount: z.string(), total: z.string(), items: z.array(z.object({ productId: z.number().int().positive(), productName: z.string(), variantLabel: z.string().optional(), quantity: z.number().int().positive(), unitPrice: z.string() })).min(1) })).mutation(({ ctx, input }) => createOrder({ ...input, userId: ctx.user?.id ?? null })),
   }),
-  booking: router({ services: publicProcedure.query(() => getPublicGroomingServices()), slots: publicProcedure.input(z.object({ date: z.string().min(8) })).query(({ input }) => getAvailableSlotsForDate(input.date)), create: publicProcedure.input(z.object({ customerName: z.string().min(2), whatsapp: whatsappInput, petName: z.string().min(1), petSize: z.enum(["small", "medium", "large"]), serviceName: z.string().min(2), date: z.string().min(8), time: z.string().regex(/^\d{2}:\d{2}$/) })).mutation(({ input }) => createBooking(input)) }),
+  booking: router({ services: publicProcedure.query(() => getPublicGroomingServices()), slots: publicProcedure.input(z.object({ date: z.string().min(8) })).query(({ input }) => getAvailableSlotsForDate(input.date)), create: publicProcedure.input(z.object({ customerName: z.string().min(2), whatsapp: whatsappInput, petName: z.string().min(1), petSize: z.enum(["small", "medium", "large"]), serviceName: z.string().min(2), date: z.string().min(8), time: z.string().regex(/^\d{2}:\d{2}$/) })).mutation(({ ctx, input }) => createBooking({ ...input, userId: ctx.user?.id ?? null })) }),
   shipping: router({ rules: publicProcedure.query(() => getPublicShippingRules()) }),
   admin: router({
     auth: router({

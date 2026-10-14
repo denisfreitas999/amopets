@@ -4,7 +4,8 @@ import type { TrpcContext } from "./_core/context";
 
 function contextWithRole(role: "user" | "admin"): TrpcContext {
   return {
-    user: { id: 1, openId: `test-${role}`, email: "admin@example.com", name: "Test", loginMethod: "test", role, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() },
+    user: role === "user" ? { id: 1, openId: `test-${role}`, email: "user@example.com", name: "Test", loginMethod: "test", role, createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date() } : null,
+    admin: role === "admin" ? { id: 1, name: "Admin Test", username: "admin@example.com" } : null,
     req: { protocol: "https", headers: {} } as TrpcContext["req"],
     res: {} as TrpcContext["res"],
     adminSession: role === "admin",
@@ -14,7 +15,7 @@ function contextWithRole(role: "user" | "admin"): TrpcContext {
 describe("admin authorization", () => {
   it("rejects admin queries for regular users", async () => {
     const caller = appRouter.createCaller(contextWithRole("user"));
-    await expect(caller.admin.products.list()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.admin.products.list()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("allows admin queries when role is admin", async () => {

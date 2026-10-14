@@ -1,9 +1,11 @@
 import { COOKIE_NAME } from "@shared/const";
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, publicProcedure, router } from "./_core/trpc";
 import { ADMIN_COOKIE, createAdminToken, getAdminByUsername, markAdminLogin, verifyAdminPassword } from "./adminAuth";
+import { checkLoginRateLimit, clearLoginRateLimit, recordLoginFailure, resolveClientIp } from "./adminRateLimit";
 import { isValidWhatsapp, normalizeWhatsapp } from "../shared/phone";
 import {
   adminCreateProduct, adminDeleteCoupon, adminDeleteGroomingService, adminDeleteProduct, adminDeleteShippingRule, adminDeleteSlot,
@@ -19,6 +21,8 @@ const productInput = z.object({ slug: z.string().min(2).regex(/^[a-z0-9-]+$/), n
 const adminStatus = z.enum(["received", "preparing", "out_for_delivery", "delivered", "cancelled"]);
 const bookingStatus = z.enum(["requested", "confirmed", "refused", "completed"]);
 const whatsappInput = z.string().trim().refine(isValidWhatsapp, "Informe um WhatsApp válido com DDD.").transform(normalizeWhatsapp);
+const DUMMY_ADMIN_PASSWORD_HASH =
+  "scrypt$00000000000000000000000000000000$00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
 export const appRouter = router({
   system: systemRouter,
@@ -36,8 +40,32 @@ export const appRouter = router({
   shipping: router({ rules: publicProcedure.query(() => getPublicShippingRules()) }),
   admin: router({
     auth: router({
-      me: publicProcedure.query(({ ctx }) => ctx.adminSession ? ctx.user : null),
-      login: publicProcedure.input(z.object({ username: z.string().email(), password: z.string().min(8) })).mutation(async ({ ctx, input }) => { const admin = await getAdminByUsername(input.username); if (!admin || !verifyAdminPassword(input.password, admin.passwordHash) || !admin.active) throw new Error("Usuário ou senha inválidos."); const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.cookie(ADMIN_COOKIE, createAdminToken(admin.id), { ...cookieOptions, maxAge: 12 * 60 * 60 * 1000 }); await markAdminLogin(admin.id); return { id: admin.id, name: admin.name, username: admin.username }; }),
+      me: publicProcedure.query(({ ctx }) => ctx.adminSession ? ctx.admin : null),
+      login: publicProcedure
+        .input(z.object({ username: z.string().trim().toLowerCase().email(), password: z.string().min(8) }))
+        .mutation(async ({ ctx, input }) => {
+          const ip = resolveClientIp(ctx.req?.ip);
+          checkLoginRateLimit(ip, input.username);
+
+          const admin = await getAdminByUsername(input.username);
+          const targetHash = admin ? admin.passwordHash : DUMMY_ADMIN_PASSWORD_HASH;
+          const isValidPassword = verifyAdminPassword(input.password, targetHash);
+          const isActive = !!(admin && admin.active);
+
+          if (!admin || !isValidPassword || !isActive) {
+            recordLoginFailure(ip, input.username);
+            throw new TRPCError({
+              code: "UNAUTHORIZED",
+              message: "Usuário ou senha inválidos.",
+            });
+          }
+
+          clearLoginRateLimit(ip, input.username);
+          const cookieOptions = getSessionCookieOptions(ctx.req);
+          ctx.res.cookie(ADMIN_COOKIE, createAdminToken(admin.id), { ...cookieOptions, maxAge: 12 * 60 * 60 * 1000 });
+          await markAdminLogin(admin.id);
+          return { id: admin.id, name: admin.name, username: admin.username };
+        }),
       logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(ADMIN_COOKIE, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
     }),
     products: router({

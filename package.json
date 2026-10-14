@@ -57,6 +57,7 @@
     "embla-carousel-react": "^8.6.0",
     "express": "^4.21.2",
     "framer-motion": "^12.23.22",
+    "google-auth-library": "^11.3.0",
     "input-otp": "^1.4.2",
     "jose": "6.1.0",
     "lucide-react": "^0.453.0",
@@ -115,7 +116,10 @@
     "overrides": {
       "tailwindcss>nanoid": "3.3.7"
     },
-    "onlyBuiltDependencies": ["@tailwindcss/oxide", "esbuild"]
+    "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "esbuild"
+    ]
   },
   "overrides": {
     "@aws-sdk/credential-provider-http": "3.907.0"

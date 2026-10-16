@@ -6,6 +6,7 @@ import { COOKIE_NAME } from "../shared/const";
 import * as db from "./db";
 import { decodeJwt, SignJWT } from "jose";
 import { createContext } from "./_core/context";
+import { assertSessionSecret } from "./_core/env";
 
 vi.mock("./db", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./db")>();
@@ -141,3 +142,140 @@ describe("Sessão do cliente (Passo D1)", () => {
     }
   });
 });
+
+describe("Endurecimento da sessão (Passo H1)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("a) assertSessionSecret: em production lança erro se JWT_SECRET ausente ou < 32 chars; em development apenas avisa", () => {
+    // production: ausente
+    expect(() => assertSessionSecret({ NODE_ENV: "production", JWT_SECRET: "" })).toThrow(/JWT_SECRET/);
+    expect(() => assertSessionSecret({ NODE_ENV: "production" })).toThrow(/JWT_SECRET/);
+
+    // production: menos de 32 caracteres
+    expect(() => assertSessionSecret({ NODE_ENV: "production", JWT_SECRET: "curto-123456" })).toThrow(/32 caracteres/);
+
+    // production: 32 caracteres ou mais
+    expect(assertSessionSecret({ NODE_ENV: "production", JWT_SECRET: "01234567890123456789012345678901" })).toBe(true);
+
+    // development: emite aviso sem lançar erro
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(() => assertSessionSecret({ NODE_ENV: "development", JWT_SECRET: "curto" })).not.toThrow();
+    expect(() => assertSessionSecret({ NODE_ENV: "development", JWT_SECRET: "" })).not.toThrow();
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it("b) verifySession rejeita um token assinado com o segredo correto mas SEM claim exp", async () => {
+    const secretKey = (sdk as any).getSessionSecret();
+    const tokenWithoutExp = await new SignJWT({
+      openId: "user-without-exp",
+      appId: "amopets",
+      name: "Usuario Sem Exp",
+    })
+      .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+      .sign(secretKey);
+
+    const result = await sdk.verifySession(tokenWithoutExp);
+    expect(result).toBeNull();
+  });
+
+  it("c) setDb lança erro quando NODE_ENV não é 'test'", () => {
+    const originalEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      expect(() => db.setDb(null)).toThrow(/NODE_ENV/);
+
+      process.env.NODE_ENV = "development";
+      expect(() => db.setDb(null)).toThrow(/NODE_ENV/);
+
+      process.env.NODE_ENV = "test";
+      expect(() => db.setDb(null)).not.toThrow();
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+
+  it("d) authenticateRequest NÃO grava lastSignedIn se o último valor tem menos de 1 hora, e grava se tem mais de 1 hora", async () => {
+    vi.useFakeTimers();
+    try {
+      const baseTime = new Date("2026-10-14T12:00:00Z");
+      vi.setSystemTime(baseTime);
+
+      const token = await sdk.signSession({
+        openId: "user-rate-limit-test",
+        appId: "amopets",
+        name: "Cliente Rate Limit",
+      });
+      const req = {
+        headers: { cookie: `${COOKIE_NAME}=${token}` },
+        protocol: "http",
+      } as unknown as Request;
+
+      // Caso 1: lastSignedIn há 30 minutos (< 1 hora) -> NÃO deve chamar upsertUser
+      vi.mocked(db.getUserByOpenId).mockResolvedValue({
+        id: 10,
+        openId: "user-rate-limit-test",
+        name: "Cliente Rate Limit",
+        role: "user",
+        email: "teste@example.com",
+        loginMethod: "google",
+        createdAt: new Date("2026-01-01"),
+        lastSignedIn: new Date("2026-10-14T11:30:00Z"), // 30 minutos antes
+      });
+
+      const user1 = await sdk.authenticateRequest(req);
+      expect(user1).not.toBeNull();
+      expect(db.upsertUser).not.toHaveBeenCalled();
+
+      // Caso 2: lastSignedIn há 65 minutos (> 1 hora) -> DEVE chamar upsertUser
+      vi.mocked(db.upsertUser).mockClear();
+      vi.mocked(db.getUserByOpenId).mockResolvedValue({
+        id: 10,
+        openId: "user-rate-limit-test",
+        name: "Cliente Rate Limit",
+        role: "user",
+        email: "teste@example.com",
+        loginMethod: "google",
+        createdAt: new Date("2026-01-01"),
+        lastSignedIn: new Date("2026-10-14T10:55:00Z"), // 65 minutos antes
+      });
+
+      const user2 = await sdk.authenticateRequest(req);
+      expect(user2).not.toBeNull();
+      expect(db.upsertUser).toHaveBeenCalledTimes(1);
+      expect(db.upsertUser).toHaveBeenCalledWith({
+        openId: "user-rate-limit-test",
+        lastSignedIn: baseTime,
+      });
+
+      // Caso 3: avança o tempo em 2 horas -> DEVE chamar upsertUser
+      vi.mocked(db.upsertUser).mockClear();
+      vi.advanceTimersByTime(2 * 60 * 60 * 1000); // 14:00:00Z
+      const newNow = new Date("2026-10-14T14:00:00Z");
+
+      vi.mocked(db.getUserByOpenId).mockResolvedValue({
+        id: 10,
+        openId: "user-rate-limit-test",
+        name: "Cliente Rate Limit",
+        role: "user",
+        email: "teste@example.com",
+        loginMethod: "google",
+        createdAt: new Date("2026-01-01"),
+        lastSignedIn: new Date("2026-10-14T11:30:00Z"),
+      });
+
+      const user3 = await sdk.authenticateRequest(req);
+      expect(user3).not.toBeNull();
+      expect(db.upsertUser).toHaveBeenCalledTimes(1);
+      expect(db.upsertUser).toHaveBeenCalledWith({
+        openId: "user-rate-limit-test",
+        lastSignedIn: newNow,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+

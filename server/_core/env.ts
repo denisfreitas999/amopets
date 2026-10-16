@@ -8,3 +8,27 @@ export const ENV = {
   googleClientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
   appUrl: (process.env.APP_URL ?? "").replace(/\/+$/, ""),
 };
+
+export function assertSessionSecret(env: Record<string, string | undefined>): boolean {
+  const nodeEnv = env.NODE_ENV || "development";
+  const secret = env.JWT_SECRET || "";
+
+  if (nodeEnv === "production") {
+    if (!secret || secret.length < 32) {
+      throw new Error(
+        "JWT_SECRET é obrigatório e deve ter no mínimo 32 caracteres em ambiente de produção."
+      );
+    }
+    return true;
+  }
+
+  if (!secret || secret.length < 32) {
+    console.warn(
+      "[Security] JWT_SECRET ausente ou menor que 32 caracteres em ambiente de desenvolvimento."
+    );
+    return false;
+  }
+
+  return true;
+}
+

@@ -8,6 +8,9 @@ import { findShippingRule, ShippingMode, shippingRuleLabels } from "../shared/sh
 let _db: ReturnType<typeof drizzle> | null = null;
 
 export function setDb(db: ReturnType<typeof drizzle> | null) {
+  if (process.env.NODE_ENV !== "test") {
+    throw new Error("setDb só é permitido quando NODE_ENV === 'test'");
+  }
   _db = db;
 }
 

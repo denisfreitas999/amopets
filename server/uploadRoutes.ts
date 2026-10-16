@@ -23,7 +23,14 @@ export function registerUploadRoutes(app: Express) {
   app.use("/uploads", async (req, res, next) => {
     const fileName = path.basename(req.path);
     if (!fileName || fileName !== req.path.slice(1) || !/^[-a-zA-Z0-9_]+\.webp$/.test(fileName)) return res.status(404).end();
-    try { await fs.access(path.join(UPLOAD_DIR, fileName)); return res.sendFile(path.join(UPLOAD_DIR, fileName)); } catch { return res.status(404).end(); }
+    try {
+      await fs.access(path.join(UPLOAD_DIR, fileName));
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      return res.sendFile(path.join(UPLOAD_DIR, fileName));
+    } catch {
+      return res.status(404).end();
+    }
   });
 
   app.post("/api/admin/uploads", (req: Request, res: Response, next) => {

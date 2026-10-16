@@ -78,6 +78,7 @@ class SDKServer {
       const secretKey = this.getSessionSecret();
       const { payload } = await jwtVerify(cookieValue, secretKey, {
         algorithms: ["HS256"],
+        requiredClaims: ["exp"],
       });
       const { openId, appId, name } = payload as Record<string, unknown>;
 
@@ -115,11 +116,20 @@ class SDKServer {
       return null;
     }
 
-    const signedInAt = new Date();
-    await db.upsertUser({
-      openId: user.openId,
-      lastSignedIn: signedInAt,
-    });
+    const ONE_HOUR_MS = 60 * 60 * 1000;
+    const lastSignedInTime = user.lastSignedIn
+      ? user.lastSignedIn instanceof Date
+        ? user.lastSignedIn.getTime()
+        : new Date(user.lastSignedIn).getTime()
+      : 0;
+
+    if (!lastSignedInTime || isNaN(lastSignedInTime) || Date.now() - lastSignedInTime >= ONE_HOUR_MS) {
+      const signedInAt = new Date();
+      await db.upsertUser({
+        openId: user.openId,
+        lastSignedIn: signedInAt,
+      });
+    }
 
     return user;
   }

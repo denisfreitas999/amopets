@@ -16,7 +16,7 @@ export const BOOKING_STATUS_LABELS: Record<string, string> = {
 export function getFirstName(fullName?: string | null): string {
   if (!fullName) return "";
   const trimmed = fullName.trim();
-  if (!trimmed) return "";
+  if (!trimmed || trimmed.includes("@")) return "";
   return trimmed.split(/\s+/)[0] || "";
 }
 
@@ -25,6 +25,7 @@ export function formatOrderDate(date: Date | string): string {
   const d = typeof date === "string" ? new Date(date) : date;
   if (isNaN(d.getTime())) return String(date);
   return d.toLocaleDateString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -33,12 +34,11 @@ export function formatOrderDate(date: Date | string): string {
 
 export function formatBookingDate(dateStr: string): string {
   if (!dateStr) return "";
-  const parts = dateStr.trim().split("-");
-  if (parts.length === 3) {
-    const [year, month, day] = parts;
-    return `${day.padStart(2, "0")}/${month.padStart(2, "0")}/${year}`;
+  const trimmed = dateStr.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return dateStr;
   }
-  return dateStr;
+  const [year, month, day] = trimmed.split("-");
 }
 
 export function translateOrderStatus(status: string): string {

@@ -1,3 +1,4 @@
+import mysql from "mysql2/promise";
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, like, lt, lte, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, adminUsers, availableSlots, bookings, coupons, groomingServices, orderItems, orderNumberSequence, orders, productImages, productSpecs, productVariants, products, shippingRules, users } from "../drizzle/schema";
@@ -5,9 +6,20 @@ import { ENV } from "./_core/env";
 import { normalizeWhatsapp } from "../shared/phone";
 import { findShippingRule, ShippingMode, shippingRuleLabels } from "../shared/shipping";
 
-let _db: ReturnType<typeof drizzle> | null = null;
+export function createDatabaseConnection(url: string) {
+  const pool = mysql.createPool({
+    uri: url,
+    timezone: "Z",
+  });
+  pool.on("connection", (conn) => {
+    conn.query("SET time_zone = '+00:00'");
+  });
+  return drizzle(pool);
+}
 
-export function setDb(db: ReturnType<typeof drizzle> | null) {
+let _db: ReturnType<typeof createDatabaseConnection> | null = null;
+
+export function setDb(db: ReturnType<typeof createDatabaseConnection> | null) {
   if (process.env.NODE_ENV !== "test") {
     throw new Error("setDb só é permitido quando NODE_ENV === 'test'");
   }
@@ -16,8 +28,12 @@ export function setDb(db: ReturnType<typeof drizzle> | null) {
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
-    try { _db = drizzle(process.env.DATABASE_URL); }
-    catch (error) { console.warn("[Database] Failed to connect:", error); _db = null; }
+    try {
+      _db = createDatabaseConnection(process.env.DATABASE_URL);
+    } catch (error) {
+      console.warn("[Database] Failed to connect:", error);
+      _db = null;
+    }
   }
   return _db;
 }
@@ -122,10 +138,35 @@ export async function createOrder(input: {
   const coupon = await calculateCoupon(input.couponCode, subtotal);
   const total = subtotal - coupon.discount + shippingFee;
   const createdOrder = await db.transaction(async (tx) => {
-    await tx.update(orderNumberSequence).set({ nextNumber: sql`${orderNumberSequence.nextNumber} + 1` }).where(eq(orderNumberSequence.id, 1));
-    const sequenceRow = (await tx.select({ nextNumber: orderNumberSequence.nextNumber }).from(orderNumberSequence).where(eq(orderNumberSequence.id, 1)).limit(1))[0];
-    if (!sequenceRow) throw new Error("Sequência de pedidos indisponível");
-    const orderNumber = Number(sequenceRow.nextNumber) - 1;
+    const sequenceRow = (
+      await tx
+        .select({ nextNumber: orderNumberSequence.nextNumber })
+        .from(orderNumberSequence)
+        .where(eq(orderNumberSequence.id, 1))
+        .for("update")
+    )[0];
+
+    const maxOrderRow = (
+      await tx
+        .select({ maxOrderNumber: sql<number | null>`max(${orders.orderNumber})` })
+        .from(orders)
+    )[0];
+    const maxExisting = maxOrderRow?.maxOrderNumber != null ? Number(maxOrderRow.maxOrderNumber) : 0;
+
+    let orderNumber: number;
+    if (sequenceRow) {
+      const currentNext = Number(sequenceRow.nextNumber);
+      orderNumber = Math.max(currentNext, maxExisting + 1);
+      await tx
+        .update(orderNumberSequence)
+        .set({ nextNumber: orderNumber + 1 })
+        .where(eq(orderNumberSequence.id, 1));
+    } else {
+      orderNumber = maxExisting > 0 ? maxExisting + 1 : 1;
+      await tx
+        .insert(orderNumberSequence)
+        .values({ id: 1, nextNumber: orderNumber + 1 });
+    }
     const inserted = await tx.insert(orders).values({
       userId: input.userId ?? null,
       orderNumber,

@@ -175,7 +175,7 @@ export async function handleGoogleAuthCallback(req: Request, res: Response) {
   }
 
   const openId = `google:${payload.sub}`;
-  const name = payload.name || payload.email || "Usuário";
+  const name = payload.name?.trim() ? payload.name.trim() : "Cliente";
   const email = payload.email || null;
 
   try {

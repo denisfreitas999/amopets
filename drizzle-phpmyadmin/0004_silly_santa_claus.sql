@@ -1,1 +1,0 @@
-ALTER TABLE `available_slots` ADD CONSTRAINT `available_slots_weekday_time` UNIQUE(`weekday`,`time`);

@@ -68,26 +68,28 @@ npm run dev
 
 ## Banco de dados
 
-Configure a variável `DATABASE_URL` com a conexão MySQL:
+Configure a variável `DATABASE_URL` com a conexão MySQL no seu `.env`:
 
 ```env
 DATABASE_URL=mysql://USUARIO:SENHA@localhost:3306/NOME_DO_BANCO
 ```
 
-Gere e aplique as migrações com:
+### Como criar o banco do zero (Hostinger ou Local via phpMyAdmin):
+1. No **phpMyAdmin**, selecione o banco de dados da AmoPets;
+2. Na aba **SQL**, execute o arquivo [`database/01_schema_completo.sql`](database/01_schema_completo.sql) para criar todas as 14 tabelas oficiais consolidadas;
+3. Em seguida, execute o arquivo [`database/02_dados_iniciais.sql`](database/02_dados_iniciais.sql) para cadastrar o administrador (`admin@amopets.com.br` / `AmoPets#2026`), sequência de pedidos, regras de frete e horários;
+4. Consulte [`database/README.md`](database/README.md) para o guia detalhado.
 
+### Alternativa via CLI (Ambiente de Desenvolvimento):
+Se preferir usar o terminal local com Drizzle:
 ```bash
 pnpm db:push
 ```
-
-Ou, se pnpm não estiver disponível:
-
+Ou:
 ```bash
 npx drizzle-kit generate
 npx drizzle-kit migrate
 ```
-
-Os arquivos SQL gerados e as migrações ficam em `drizzle/`.
 
 ## Variáveis de ambiente
 

@@ -16,9 +16,9 @@
 2. Use a versão Node.js LTS disponível no painel. O projeto foi validado com Node 22 no ambiente de desenvolvimento; confirme a LTS atual da Hostinger antes de publicar.
 3. Instale e valide com `pnpm install --frozen-lockfile && pnpm check && pnpm build`.
 4. Configure a aplicação Node para iniciar com `pnpm start` a partir da raiz do projeto. A porta deve vir de `PORT` fornecida pela Hostinger.
-5. Gere/aplique o schema usando o fluxo de migration do projeto (`pnpm drizzle-kit generate` e o mecanismo de migration da hospedagem). Não edite o banco manualmente sem atualizar `drizzle/schema.ts`.
-6. Importe `database/admin_and_catalog.sql` uma vez após as migrations. Esse script é idempotente e cria o administrador inicial, 8 produtos, variantes, regras de frete, cupom, serviços e horários.
-7. A credencial inicial do `/admin` está documentada no próprio SQL para a primeira entrada. Troque a senha imediatamente em produção e gere outro hash scrypt; nunca mantenha essa senha em material público.
+5. No phpMyAdmin do hPanel, acesse a aba SQL e execute o arquivo `database/01_schema_completo.sql` para criar todas as 14 tabelas oficiais consolidadas.
+6. Em seguida, na mesma aba SQL, execute `database/02_dados_iniciais.sql`. Esse script é idempotente e cria o administrador inicial (`admin@amopets.com.br` / `AmoPets#2026`), sequenciador de pedidos, regras de frete padrão, serviços e horários.
+7. Acesse `/admin`, faça o primeiro login com as credenciais padrão e altere a senha ou cadastre o administrador definitivo com senha forte.
 8. Garanta que `uploads/` exista e seja gravável pelo processo Node. O upload administrativo aceita somente WebP real, extensão `.webp`, até 1 MB por arquivo e no máximo 10 arquivos por requisição. Faça backup de `uploads/` junto com o banco.
 9. Aponte `amopets.com.br` (domínio fictício do portfólio) para a aplicação e habilite HTTPS.
 

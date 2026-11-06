@@ -111,6 +111,6 @@ Se o deploy automático estiver ativado, a Hostinger fará uma nova implantaçã
 
 ## 9. Banco e uploads
 
-O banco MySQL da Hostinger precisa ser criado separadamente. Depois, aplique as migrações da pasta `drizzle/` e execute o script de criação do administrador.
+O banco MySQL da Hostinger precisa ser criado separadamente. Em seguida, acesse o phpMyAdmin e execute os dois scripts da pasta `database/`: primeiro `01_schema_completo.sql` e depois `02_dados_iniciais.sql` (que cria a estrutura completa e o administrador inicial).
 
 A pasta `uploads/` contém imagens do catálogo. Valide upload e leitura de novas imagens após o primeiro deploy.

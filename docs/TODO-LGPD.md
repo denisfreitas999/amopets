@@ -14,7 +14,7 @@ Remover a consulta pública de pedidos e agendamentos por WhatsApp (incompatíve
 - **Pilha**: XAMPP (MariaDB e phpMyAdmin) no Windows.
 - **Bancos de Dados**: `amopets_dev` (desenvolvimento) e `amopets_test` (testes automatizados, com guarda estrita exigindo sufixo `_test`).
 - **Comandos Principais**: `pnpm dev` (servidor de desenvolvimento), `pnpm check` (verificação de tipagem `tsc`), `pnpm test` (testes Vitest).
-- **Migrações de Banco**: Aplicadas manualmente via phpMyAdmin (arquivos SQL disponíveis em `drizzle-phpmyadmin/`).
+- **Migrações de Banco**: Estrutura consolidada em `database/01_schema_completo.sql` e histórico Drizzle em `drizzle/`.
 - **Variáveis de Ambiente (apenas nomes)**: `DATABASE_URL`, `TEST_DATABASE_URL`, `JWT_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `APP_URL`, `NODE_ENV`, `PORT`, `CORS_ORIGIN`, `COOKIE_NAME`.
 
 ## 4. Regras de Trabalho com o Agente
@@ -37,7 +37,7 @@ Remover a consulta pública de pedidos e agendamentos por WhatsApp (incompatíve
 | Passo | Descrição | Status | Commit | Observação |
 |---|---|---|---|---|
 | A | Remoção da consulta pública por WhatsApp | Concluído | `2b3a511` | Rotas públicas de busca por telefone encerradas |
-| B | Coluna `userId`, FK e índices em `orders`/`bookings` | Concluído | `097d487` | Migração SQL 0011 em drizzle-phpmyadmin/ |
+| B | Coluna `userId`, FK e índices em `orders`/`bookings` | Concluído | `097d487` | Migração SQL 0011 em drizzle/ e consolidada em database/ |
 | C1 | Separação de contexto administrativo e cliente | Concluído | `f84c509` | `ctx.admin` e `ctx.user` desacoplados |
 | C2 | Rate limit de login administrativo | Concluído | `f84c509` | Janela deslizante de 15 min, 5 tentativas por IP/usuário |
 | C2.1 | Refinamento do rate limit admin | Concluído | `f84c509` | Normalização de username e validação antes do scrypt |

@@ -1,10 +1,11 @@
-MIGRAÇÕES AMOPETS PARA PHPMYADMIN
+PASTA DRIZZLE ORM (USO INTERNO DO PROJETO)
 
-O Drizzle usa o marcador `--> statement-breakpoint`, que não é SQL do MySQL.
-Os marcadores foram removidos destes arquivos; os comandos SQL permanecem iguais.
+Esta pasta contém o schema TypeScript (schema.ts), definições de relações e o histórico de migrações gerenciado pelo Drizzle ORM.
 
-IMPORTANTE:
-- Verifique no phpMyAdmin quais tabelas já existem antes de repetir uma migração.
-- Pelo resultado de 0001, provavelmente as 10 tabelas de 0001 já foram criadas. Se elas existirem, NÃO importe 0001 novamente.
-- Continue com 0002, 0003, 0004, 0005, 0006 e 0007, nessa ordem.
-- Se uma migração posterior disser que uma coluna/índice já existe, pare e registre qual migração foi aplicada.
+ATENÇÃO:
+- NÃO utilize os arquivos desta pasta para importação manual no phpMyAdmin (eles contêm delimitadores de breakpoint internos do Drizzle).
+- Para criar o banco de dados do zero no phpMyAdmin ou no terminal MySQL, utilize os scripts prontos e consolidados em:
+    -> database/01_schema_completo.sql
+    -> database/02_dados_iniciais.sql
+
+Para mais detalhes e passo a passo completo, consulte database/README.md.

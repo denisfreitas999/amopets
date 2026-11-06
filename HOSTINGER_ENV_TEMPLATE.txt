@@ -7,4 +7,6 @@ GOOGLE_CLIENT_ID=SEU_GOOGLE_CLIENT_ID.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=SEU_GOOGLE_CLIENT_SECRET
 APP_URL=https://seudominio.com.br
 CORS_ORIGIN=https://seudominio.com.br
+# Opcional (Recomendado): pasta permanente fora do deploy automático para que uploads novos nunca sumam em novas versões
+# UPLOAD_DIR=/home/u458687195/uploads
 COOKIE_NAME=amopets_session

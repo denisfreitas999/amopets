@@ -5,6 +5,7 @@ import { InsertUser, adminUsers, availableSlots, bookings, coupons, groomingServ
 import { ENV } from "./_core/env";
 import { normalizeWhatsapp } from "../shared/phone";
 import { findShippingRule, ShippingMode, shippingRuleLabels } from "../shared/shipping";
+import { deleteUploadedFileSafe } from "./uploadRoutes";
 
 export function createDatabaseConnection(url: string) {
   const pool = mysql.createPool({
@@ -252,19 +253,35 @@ export async function adminUpdateProduct(input: { id: number; slug: string; name
   await db.update(products).set({ slug: input.slug, name: input.name, category: input.category, subcategory: input.subcategory, description: input.description || null, status: input.status }).where(eq(products.id, input.id));
   await db.delete(productVariants).where(eq(productVariants.productId, input.id));
   if (input.variants.length) await db.insert(productVariants).values(input.variants.map((variant) => ({ productId: input.id, label: variant.label, sku: variant.sku, price: variant.price, oldPrice: variant.oldPrice || null, stock: variant.stock })));
+  
+  const oldImages = await db.select({ url: productImages.url }).from(productImages).where(eq(productImages.productId, input.id));
   await db.delete(productImages).where(eq(productImages.productId, input.id));
   if (input.images.length) await db.insert(productImages).values(input.images.map((image) => ({ ...image, productId: input.id, alt: image.alt || null })));
   await db.delete(productSpecs).where(eq(productSpecs.productId, input.id));
   if (input.specs.length) await db.insert(productSpecs).values(input.specs.map((spec) => ({ ...spec, productId: input.id })));
+
+  // Remove do disco arquivos de imagens que foram retiradas do produto na edição
+  const newUrls = new Set(input.images.map((img) => img.url));
+  for (const old of oldImages) {
+    if (!newUrls.has(old.url)) {
+      await deleteUploadedFileSafe(old.url);
+    }
+  }
 }
 
 export async function adminDeleteProduct(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database unavailable");
+  const oldImages = await db.select({ url: productImages.url }).from(productImages).where(eq(productImages.productId, id));
   await db.delete(productVariants).where(eq(productVariants.productId, id));
   await db.delete(productImages).where(eq(productImages.productId, id));
   await db.delete(productSpecs).where(eq(productSpecs.productId, id));
   await db.delete(products).where(eq(products.id, id));
+
+  // Remove do disco os arquivos físicos das imagens do produto excluído
+  for (const old of oldImages) {
+    await deleteUploadedFileSafe(old.url);
+  }
 }
 
 export async function getOrderById(id: number) {

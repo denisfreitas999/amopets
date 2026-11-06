@@ -57,7 +57,8 @@ Remover a consulta pública de pedidos e agendamentos por WhatsApp (incompatíve
 | T | Criação e manutenção do arquivo de progresso | Concluído | `e90ca4b` | Criação de docs/TODO-LGPD.md |
 | H4a | Diagnóstico de privacidade e limpeza | Concluído | - | Diagnóstico somente-leitura |
 | H4b | Limpeza do Manus, Analytics e dependências | Concluído | `1ae7017` | Remoção do Umami, plugins/hosts Manus no Vite, órfãos de backend/frontend, dependências órfãs e .manus-logs |
-| H4c | Varredura Manus, auth.me, erros e datas | Concluído | `1ae7017` | Varredura Manus, auth.me sanitizado ({ name } ou null), installErrorHandler tardio, TZ America/Sao_Paulo em PDFs e Admin |
+| H4c | Varredura Manus, auth.me, erros e datas | Concluído | `862642f` | Varredura Manus, auth.me sanitizado ({ name } ou null), installErrorHandler tardio, TZ America/Sao_Paulo em PDFs e Admin |
+| I1 | Política de Privacidade (LGPD) | Concluído | `c69798a` | Redação afirmativa em 9 seções com bases legais, canal DPO, prazos de retenção e link no checkout |
 | 8B | Exclusão de conta pelo titular (LGPD) | Pendente | - | Direito ao esquecimento (opcional) |
 | I | Testes integrados finais e validação pré-deploy | Pendente | - | Homologação final dos fluxos |
 
@@ -74,7 +75,7 @@ Remover a consulta pública de pedidos e agendamentos por WhatsApp (incompatíve
 - **Centralização do tratador de erros**: Resolvido no Passo H4c (`installErrorHandler(app)` montado após `setupVite` e `serveStatic`, suprimindo `data.stack` fora de development).
 - **Varredura Manus e notificações legadas**: Resolvido no Passo H4c (remoção de `systemRouter`, `notification.ts`, `forgeApiUrl`, `forgeApiKey`, e adição de `.manus/` ao `.gitignore`).
 - **Validação de Mutação e Higiene Estrita (H4c.1)**: Provas de mutação validadas para `auth.me`, tratador de erro tardio, fuso `America/Sao_Paulo` forçado com `$env:TZ="UTC"` e `errorFormatter`. Remoção definitiva de `template.json` e do teste de storage legado em `httpSecurity.test.ts`.
-- **Política de Privacidade**: Atualizar texto no frontend para refletir a nova coleta, autenticação Google e direitos LGPD.
+- **Política de Privacidade (Passo I1)**: Resolvido no Passo I1 (texto afirmativo em 9 seções detalhando bases legais da LGPD, compartilhamento restrito, prazos de 5 anos/30 dias, canais de atendimento e direitos do titular).
 
 ## 7. Checklist de Deploy (Hostinger)
 - [ ] Executar backup completo do banco de produção antes de qualquer alteração.

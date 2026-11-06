@@ -434,7 +434,7 @@ function Account() {
     switch (status) {
       case "received": return "status-recebido";
       case "preparing": return "status-em-preparo";
-      case "out_for_delivery": return "status-saiu-p/entrega";
+      case "out_for_delivery": return "status-saiu-entrega";
       case "delivered": return "status-entregue";
       case "cancelled": return "status-cancelado";
       default: return "";

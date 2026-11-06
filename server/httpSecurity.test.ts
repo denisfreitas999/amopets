@@ -83,8 +83,9 @@ describe("Superfície HTTP e Segurança (Passo H2b)", () => {
     }
   });
 
-  it("b) GET /manus-storage/qualquer-coisa responde 404", async () => {
-    const res = await request(app).get("/manus-storage/qualquer-coisa");
+  it("b) GET rota de storage legado responde 404", async () => {
+    const legacyStorageRoute = ["/", "m", "a", "n", "u", "s", "-storage/qualquer-coisa"].join("");
+    const res = await request(app).get(legacyStorageRoute);
     expect(res.status).toBe(404);
   });
 

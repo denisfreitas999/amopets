@@ -82,6 +82,7 @@ export function createApp() {
   registerUploadRoutes(app);
   registerOrderPdfRoutes(app);
   registerBookingPdfRoutes(app);
+
   // tRPC API
   app.use(
     "/api/trpc",
@@ -90,10 +91,23 @@ export function createApp() {
       createContext,
     })
   );
+
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, service: "amopets", demo: false, timestamp: new Date().toISOString() });
   });
 
+  // O tratador de erros NÃO é montado aqui para poder capturar rotas
+  // registradas depois (Vite em dev, serveStatic em prod).
+  // Chame installErrorHandler(app) APÓS setupVite/serveStatic.
+
+  return app;
+}
+
+/**
+ * Monta o tratador de erros centralizado no app.
+ * Deve ser chamado DEPOIS de setupVite() ou serveStatic().
+ */
+export function installErrorHandler(app: ReturnType<typeof createApp>) {
   app.use((error: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     if (res.headersSent) return next(error);
     const errStatus =
@@ -110,8 +124,6 @@ export function createApp() {
     console.error("[HTTP] Request failed", error instanceof Error ? error.message : "unknown error");
     res.status(errStatus).json({ message: "Ocorreu um erro interno. Tente novamente." });
   });
-
-  return app;
 }
 
 async function startServer() {
@@ -124,6 +136,9 @@ async function startServer() {
   } else {
     serveStatic(app);
   }
+
+  // Tratador de erros montado DEPOIS do Vite/static para cobrir todas as rotas
+  installErrorHandler(app);
 
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = await findAvailablePort(preferredPort);

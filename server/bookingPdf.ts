@@ -2,6 +2,8 @@ import type { Express, Request, Response } from "express";
 import PDFDocument from "pdfkit";
 import { getAdminByRequest } from "./adminAuth";
 import { getBookingById } from "./db";
+import { formatDateTimeBR } from "../shared/dateFormat";
+import { formatBookingDate } from "../shared/accountFormatters";
 
 export const bookingStatusLabel = (status: string) => ({ requested: "Solicitado", confirmed: "Confirmado", refused: "Recusado", completed: "Concluído" }[status] || status);
 const petSizeLabel = (size: string) => ({ small: "Pequeno", medium: "Médio", large: "Grande" }[size] || size);
@@ -14,13 +16,13 @@ function sendBookingPdf(res: Response, booking: Awaited<ReturnType<typeof getBoo
   doc.pipe(res);
   const teal = "#174b52"; const coral = "#e98c76"; const muted = "#64747a"; const line = "#d8e2df";
   const left = 42; const right = 553;
-  const appointmentDate = new Date(`${booking.date}T12:00:00Z`).toLocaleDateString("pt-BR");
+  const appointmentDate = formatBookingDate(booking.date);
 
   doc.roundedRect(left, 42, right - left, 88, 14).fill(teal);
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(23).text("amo", 64, 66, { continued: true }).fillColor(coral).text("pets");
   doc.fillColor("#dff2ef").font("Helvetica").fontSize(9).text("PETSHOP AFETIVO · ARACAJU/SE", 65, 96);
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(12).text("COMPROVANTE DE AGENDAMENTO", 258, 67, { width: 270, align: "right", lineBreak: false });
-  doc.font("Helvetica").fontSize(8.5).fillColor("#dff2ef").text(`Agendamento #${booking.id} · ${new Date(booking.createdAt).toLocaleString("pt-BR")}`, 258, 101, { width: 270, align: "right", lineBreak: false });
+  doc.font("Helvetica").fontSize(8.5).fillColor("#dff2ef").text(`Agendamento #${booking.id} · ${formatDateTimeBR(new Date(booking.createdAt))}`, 258, 101, { width: 270, align: "right", lineBreak: false });
 
   doc.fillColor(teal).font("Helvetica-Bold").fontSize(10).text("DOCUMENTO DE SERVIÇO", left, 153);
   doc.fillColor(muted).font("Helvetica").fontSize(8).text("Este documento discrimina a solicitação de banho e tosa e não substitui comprovante de pagamento.", left, 169, { width: 511 });

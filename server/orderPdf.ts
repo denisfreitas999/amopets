@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import PDFDocument from "pdfkit";
 import { getAdminByRequest } from "./adminAuth";
 import { getOrderById } from "./db";
+import { formatDateTimeBR } from "../shared/dateFormat";
 
 const money = (value: string | number) => Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 export const statusLabel = (status: string) => ({ received: "Recebido", preparing: "Em preparo", out_for_delivery: "Saiu para entrega", delivered: "Entregue", cancelled: "Cancelado" }[status] || status);
@@ -18,7 +19,7 @@ function sendOrderPdf(res: Response, order: Awaited<ReturnType<typeof getOrderBy
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(23).text("amo", 64, 66, { continued: true }).fillColor(coral).text("pets");
   doc.fillColor("#dff2ef").font("Helvetica").fontSize(9).text("PETSHOP AFETIVO · ARACAJU/SE", 65, 96);
   doc.fillColor("#ffffff").font("Helvetica-Bold").fontSize(12).text("COMPROVANTE DE PEDIDO", 283, 67, { width: 250, align: "right", lineBreak: false });
-  doc.font("Helvetica").fontSize(8.5).fillColor("#dff2ef").text(`Pedido #${order.orderNumber} · ${new Date(order.createdAt).toLocaleString("pt-BR")}`, 283, 101, { width: 250, align: "right", lineBreak: false });
+  doc.font("Helvetica").fontSize(8.5).fillColor("#dff2ef").text(`Pedido #${order.orderNumber} · ${formatDateTimeBR(new Date(order.createdAt))}`, 283, 101, { width: 250, align: "right", lineBreak: false });
 
   doc.fillColor(teal).font("Helvetica-Bold").fontSize(10).text("DOCUMENTO PERSONALIZADO DO PEDIDO", left, 153);
   doc.fillColor(muted).font("Helvetica").fontSize(8).text("Este comprovante registra a compra e não substitui uma Nota Fiscal Eletrônica (NF-e) oficial.", left, 169);

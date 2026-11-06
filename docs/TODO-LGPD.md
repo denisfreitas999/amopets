@@ -55,8 +55,9 @@ Remover a consulta pública de pedidos e agendamentos por WhatsApp (incompatíve
 | H2b | Limites de payload, CORS, cabeçalhos e rate limit | Concluído | `e90679d` | Limite 1MB, remoção do proxy, HSTS e rate limiting em tRPC |
 | H2c | Correção da resolução de IP no rate limit | Concluído | `e90679d` | Uso estrito de `req.ip` via trust proxy e remoção de `::ffff:` |
 | T | Criação e manutenção do arquivo de progresso | Concluído | `e90ca4b` | Criação de docs/TODO-LGPD.md |
-| H3 | Integridade: número do pedido, fuso horário e exibição | Concluído | `e90ca4b` | Lock FOR UPDATE na sequência, pool UTC (+00:00), fuso America/Sao_Paulo nas datas e fallback 'Cliente' no Google Auth |
-| H4 | Limpeza de serviços legados Manus | Pendente | - | Avaliação de remoção de `storage.ts`, `imageGeneration.ts`, etc. |
+| H4a | Diagnóstico de privacidade e limpeza | Concluído | - | Diagnóstico somente-leitura |
+| H4b | Limpeza do Manus, Analytics e dependências | Concluído | `1ae7017` | Remoção do Umami, plugins/hosts Manus no Vite, órfãos de backend/frontend, dependências órfãs e .manus-logs |
+| H4c | Varredura Manus, auth.me, erros e datas | Concluído | `1ae7017` | Varredura Manus, auth.me sanitizado ({ name } ou null), installErrorHandler tardio, TZ America/Sao_Paulo em PDFs e Admin |
 | 8B | Exclusão de conta pelo titular (LGPD) | Pendente | - | Direito ao esquecimento (opcional) |
 | I | Testes integrados finais e validação pré-deploy | Pendente | - | Homologação final dos fluxos |
 
@@ -64,11 +65,15 @@ Remover a consulta pública de pedidos e agendamentos por WhatsApp (incompatíve
 - **Fuso horário no banco**: Resolvido no Passo H3 (pool mysql2 configurado com `timezone: "Z"` e `SET time_zone = '+00:00'`).
 - **Sequência de pedidos**: Resolvido no Passo H3 (`FOR UPDATE`, `Math.max(nextNumber, MAX + 1)` e auto-criação da sequência).
 - **Formatação de nome e fuso**: Resolvido no Passo H3 (`formatOrderDate` com `America/Sao_Paulo`, `formatBookingDate` estrito e fallback "Cliente" no Google Auth e em `getFirstName`).
-- **Scripts externos**: Analytics do Umami e `debug-collector` herdados a remover ou documentar.
-- **Contrato de `auth.me`**: Retorna o registro completo de `User`; sanitizar para retornar somente `id`, `name` e `email`.
-- **Estilo CSS**: Classe `status-saiu-p/entrega` contém barra no seletor, exigindo escape ou normalização.
-- **Módulos Manus sem uso**: Avaliar depreciação de `storage.ts`, `imageGeneration.ts`, `notification.ts`, `llm.ts`, `heartbeat.ts` e `map.ts`.
-- **Limpeza de dependências**: Identificar pacotes npm órfãos após remoção de integrações legadas.
+- **Scripts externos**: Resolvido no Passo H4b (script do Umami e `debug-collector.js` removidos).
+- **Estilo CSS**: Resolvido no Passo H4b (`status-saiu-entrega` normalizado no CSS e no TSX).
+- **Módulos Manus sem uso**: Resolvido no Passo H4b (`storage.ts`, `imageGeneration.ts`, `llm.ts`, `heartbeat.ts`, `map.ts`, `voiceTranscription.ts`, `dataApi.ts` e componentes órfãos do front removidos).
+- **Limpeza de dependências**: Resolvido no Passo H4b (`@aws-sdk/*`, `axios`, `framer-motion`, `@hookform/resolvers`, etc. removidos do `package.json`).
+- **Contrato de `auth.me`**: Resolvido no Passo H4c (sanitizado para retornar `{ name }` quando há sessão ou `null`).
+- **Fuso em PDFs e Admin**: Resolvido no Passo H4c (`formatDateTimeBR` e `formatDateBR` em `shared/dateFormat.ts` com `America/Sao_Paulo`, aplicados nos PDFs e no painel admin).
+- **Centralização do tratador de erros**: Resolvido no Passo H4c (`installErrorHandler(app)` montado após `setupVite` e `serveStatic`, suprimindo `data.stack` fora de development).
+- **Varredura Manus e notificações legadas**: Resolvido no Passo H4c (remoção de `systemRouter`, `notification.ts`, `forgeApiUrl`, `forgeApiKey`, e adição de `.manus/` ao `.gitignore`).
+- **Validação de Mutação e Higiene Estrita (H4c.1)**: Provas de mutação validadas para `auth.me`, tratador de erro tardio, fuso `America/Sao_Paulo` forçado com `$env:TZ="UTC"` e `errorFormatter`. Remoção definitiva de `template.json` e do teste de storage legado em `httpSecurity.test.ts`.
 - **Política de Privacidade**: Atualizar texto no frontend para refletir a nova coleta, autenticação Google e direitos LGPD.
 
 ## 7. Checklist de Deploy (Hostinger)

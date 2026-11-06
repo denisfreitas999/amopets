@@ -39,6 +39,7 @@ export function formatBookingDate(dateStr: string): string {
     return dateStr;
   }
   const [year, month, day] = trimmed.split("-");
+  return `${day}/${month}/${year}`;
 }
 
 export function translateOrderStatus(status: string): string {

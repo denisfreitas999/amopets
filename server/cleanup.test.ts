@@ -135,7 +135,7 @@ function createMockReqRes(options: {
   };
 }
 
-describe("Passo D3 - Limpeza Manus OAuth e Ajustes Google Auth", () => {
+describe("Passo D3 - Limpeza OAuth e Ajustes Google Auth", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -205,7 +205,7 @@ describe("Passo D3 - Limpeza Manus OAuth e Ajustes Google Auth", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("d) sdk não possui oauthService nem cria cliente HTTP para api.manus.im", () => {
+  it("d) sdk não possui oauthService nem cria cliente HTTP externo legado", () => {
     expect((sdk as any).oauthService).toBeUndefined();
     expect((sdk as any).client).toBeUndefined();
   });

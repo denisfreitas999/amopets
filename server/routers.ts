@@ -2,7 +2,6 @@ import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { getSessionCookieOptions } from "./_core/cookies";
-import { systemRouter } from "./_core/systemRouter";
 import { adminProcedure, protectedProcedure, publicProcedure, router } from "./_core/trpc";
 import { ADMIN_COOKIE, createAdminToken, getAdminByUsername, markAdminLogin, verifyAdminPassword } from "./adminAuth";
 import { checkLoginRateLimit, clearLoginRateLimit, recordLoginFailure, resolveClientIp } from "./adminRateLimit";
@@ -26,10 +25,9 @@ const DUMMY_ADMIN_PASSWORD_HASH =
   "scrypt$00000000000000000000000000000000$00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
 export const appRouter = router({
-  system: systemRouter,
   health: publicProcedure.query(() => ({ ok: true, service: "amopets", demo: false })),
   auth: router({
-    me: publicProcedure.query((opts) => opts.ctx.user),
+    me: publicProcedure.query((opts) => opts.ctx.user ? { name: opts.ctx.user.name ?? "" } : null),
     logout: publicProcedure.mutation(({ ctx }) => { const cookieOptions = getSessionCookieOptions(ctx.req); ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 }); return { success: true } as const; }),
   }),
   account: router({

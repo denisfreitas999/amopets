@@ -33,9 +33,6 @@ export function useAuth(_options?: UseAuthOptions) {
       }
       throw error;
     } finally {
-      try {
-        sessionStorage.removeItem("manus-cookie");
-      } catch {}
       utils.auth.me.setData(undefined, null);
       await utils.auth.me.invalidate();
     }
